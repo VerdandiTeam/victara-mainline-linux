@@ -259,7 +259,7 @@
 &usb {          
         phys = <&usb_hs1_phy>;
         phy-select = <&tcsr 0xb000 0>;
-        extcon = <&smbb>, <&usb_id>;
+        extcon = <&smbb>;
         vbus-supply = <&chg_otg>;
 
         hnp-disable;
