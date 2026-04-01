@@ -451,7 +451,7 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 	ret = fwnode_property_get_reference_args(fwnode, "mboxes", "#mbox-cells",
 						 0, index, &fwspec);
 	if (ret) {
-		dev_err(dev, "%s: can't parse \"%s\" property\n", __func__, "mboxes");
+		dev_err(dev, "%s: can't parse \"%s\" property for index %d: %d\n", __func__, "mboxes", index, ret);
 		return ERR_PTR(ret);
 	}
 
