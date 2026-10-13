@@ -170,6 +170,32 @@
         vddio-supply = <&pm8941_l12>;
 };
 
+&pronto {
+        status = "okay";
+
+        vddmx-supply = <&pm8841_s1>;
+        vddpx-supply = <&pm8941_s3>;
+
+        pinctrl-names = "default";
+        pinctrl-0 = <&wcnss_pin_a>;
+
+        iris {
+                vddxo-supply = <&pm8941_l6>;
+                vddrfa-supply = <&pm8941_l11>;
+                vddpa-supply = <&pm8941_l21>;
+                vdddig-supply = <&pm8941_s3>;
+        };
+
+        smd-edge {
+                qcom,remote-pid = <4>;
+                label = "pronto";
+
+                wcnss {
+                        status = "okay";
+                };
+        };
+};
+
 &rpm_requests {
         regulators-0 {
                 compatible = "qcom,rpm-pm8841-regulators";
@@ -346,8 +372,8 @@
                 };
 
                 pm8941_l21: l21 {
-                        regulator-min-microvolt = <2950000>;
-                        regulator-max-microvolt = <2950000>;
+                        regulator-min-microvolt = <2900000>;
+                        regulator-max-microvolt = <3350000>;
 
                         regulator-boot-on;
                 };
@@ -438,6 +464,24 @@
                         function = "gpio";
                         drive-strength = <2>;
                         bias-disable;
+                };
+        };
+
+        wcnss_pin_a: wcnss-pin-active-state {
+                wlan-pins {
+                        pins = "gpio36", "gpio37", "gpio38", "gpio39", "gpio40";
+                        function = "wlan";
+
+                        drive-strength = <6>;
+                        bias-pull-down;
+                };
+
+                bt-pins {
+                        pins = "gpio35", "gpio43", "gpio44";
+                        function = "bt";
+
+                        drive-strength = <2>;
+                        bias-pull-down;
                 };
         };
 };
