@@ -521,6 +521,9 @@ static int drv260x_probe(struct i2c_client *client)
 	if (IS_ERR(haptics->enable_gpio))
 		return PTR_ERR(haptics->enable_gpio);
 
+	if (haptics->enable_gpio)
+		usleep_range(1000, 2000);
+
 	haptics->input_dev = devm_input_allocate_device(dev);
 	if (!haptics->input_dev) {
 		dev_err(dev, "Failed to allocate input device\n");
