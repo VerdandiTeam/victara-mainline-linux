@@ -109,6 +109,20 @@
                 vib-rated-mv = <2503>;
                 vib-overdrive-mv = <3008>;
         };
+
+        touchscreen@4a {
+                compatible = "atmel,maxtouch";
+                reg = <0x4a>;
+
+                interrupts-extended = <&tlmm 62 IRQ_TYPE_EDGE_FALLING>;
+                reset-gpios = <&tlmm 57 GPIO_ACTIVE_LOW>;
+
+                vdda-supply = <&pm8941_l23>;
+                vdd-supply = <&pm8941_s3>;
+
+                pinctrl-0 = <&touch_default>;
+                pinctrl-names = "default";
+        };
 };
 
 &blsp1_uart2 {
@@ -409,6 +423,22 @@
                 gpios = <129 GPIO_ACTIVE_HIGH>;
                 output-low;
                 line-name = "mipi-d0-sel";
+        };
+
+        touch_default: touch-default-state {
+                int-pins {
+                        pins = "gpio62";
+                        function = "gpio";
+                        drive-strength = <2>;
+                        bias-disable;
+                };
+
+                reset-pins {
+                        pins = "gpio57";
+                        function = "gpio";
+                        drive-strength = <2>;
+                        bias-disable;
+                };
         };
 };
 
