@@ -419,6 +419,11 @@ static const struct regmap_config drv260x_regmap_config = {
 	.cache_type = REGCACHE_NONE,
 };
 
+static void drv260x_disable_regulator(void *data)
+{
+	regulator_disable(data);
+}
+
 static int drv260x_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
@@ -484,10 +489,24 @@ static int drv260x_probe(struct i2c_client *client)
 		return error;
 	}
 
+	error = regulator_enable(haptics->regulator);
+	if (error) {
+		dev_err(dev, "Failed to enable regulator: %d\n", error);
+		return error;
+	}
+
+	error = devm_add_action_or_reset(dev, drv260x_disable_regulator,
+					 haptics->regulator);
+	if (error)
+		return error;
+
 	haptics->enable_gpio = devm_gpiod_get_optional(dev, "enable",
 						       GPIOD_OUT_HIGH);
 	if (IS_ERR(haptics->enable_gpio))
 		return PTR_ERR(haptics->enable_gpio);
+
+	if (haptics->enable_gpio)
+		usleep_range(1000, 2000);
 
 	haptics->input_dev = devm_input_allocate_device(dev);
 	if (!haptics->input_dev) {
