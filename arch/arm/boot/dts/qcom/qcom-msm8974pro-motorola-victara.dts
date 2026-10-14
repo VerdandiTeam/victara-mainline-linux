@@ -21,6 +21,17 @@
                stdout-path = "serial0:115200n8";
        };
 
+        reserved-memory {
+                ramoops@3eae0000 {
+                        compatible = "ramoops";
+                        reg = <0x3eae0000 0x20000>;
+                        console-size = <0x20000>;
+                        record-size = <0x0>;
+                        pmsg-size = <0x0>;
+                        mem-type = <1>;
+                };
+        };
+
         gpio-keys {
                 compatible = "gpio-keys";
 
