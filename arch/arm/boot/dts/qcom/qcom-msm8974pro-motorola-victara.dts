@@ -376,6 +376,7 @@
                         regulator-max-microvolt = <3350000>;
 
                         regulator-boot-on;
+                        regulator-always-on;
                 };
 
                 pm8941_l22: l22 {
@@ -484,6 +485,10 @@
                         bias-pull-down;
                 };
         };
+};
+
+&usb_id {
+        status = "disabled";
 };
 
 &usb {          
