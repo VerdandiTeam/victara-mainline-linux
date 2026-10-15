@@ -191,7 +191,7 @@ krait_add_sec_mux(struct device *dev, int id, const char *s,
 		sec_mux_list[1].fw_name = parent_name;
 		sec_mux_list[1].name = parent_name;
 	} else {
-		sec_mux_list[1].name = "apu_aux";
+		sec_mux_list[1].name = "acpu_aux";
 	}
 
 	ret = devm_clk_hw_register(dev, &mux->hw);

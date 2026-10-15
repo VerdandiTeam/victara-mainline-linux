@@ -565,3 +565,50 @@
                 function = LED_FUNCTION_CHARGING;
         };
 };
+
+&saw_l2 {
+        compatible = "qcom,msm8974-saw2-v2.1-l2", "qcom,saw2", "syscon";
+};
+
+&pm8841_1 {
+        regulators {
+                compatible = "qcom,pm8841-regulators";
+                qcom,saw-reg = <&saw_l2>;
+
+                pm8841_s5: s5 {
+                        qcom,saw-leader;
+                        regulator-name = "vdd_apc";
+                        regulator-min-microvolt = <800000>;
+                        regulator-max-microvolt = <1080000>;
+                        regulator-always-on;
+                };
+
+                s6 {
+                        qcom,saw-slave;
+                };
+
+                s7 {
+                        qcom,saw-slave;
+                };
+
+                s8 {
+                        qcom,saw-slave;
+                };
+        };
+};
+
+&cpu0 {
+        cpu-supply = <&pm8841_s5>;
+};
+
+&cpu1 {
+        cpu-supply = <&pm8841_s5>;
+};
+
+&cpu2 {
+        cpu-supply = <&pm8841_s5>;
+};
+
+&cpu3 {
+        cpu-supply = <&pm8841_s5>;
+};

@@ -10,6 +10,7 @@
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/power/qcom-rpmpd.h>
 #include <dt-bindings/reset/qcom,gcc-msm8974.h>
+#include <dt-bindings/thermal/thermal.h>
 
 / {
 	#address-cells = <1>;
@@ -46,6 +47,10 @@
 			qcom,acc = <&acc0>;
 			qcom,saw = <&saw0>;
 			cpu-idle-states = <&cpu_spc>;
+			clocks = <&kraitcc 0>;
+			#cooling-cells = <2>;
+			clock-names = "cpu";
+			clock-latency = <100000>;
 		};
 
 		cpu1: cpu@1 {
@@ -57,6 +62,10 @@
 			qcom,acc = <&acc1>;
 			qcom,saw = <&saw1>;
 			cpu-idle-states = <&cpu_spc>;
+			clocks = <&kraitcc 1>;
+			#cooling-cells = <2>;
+			clock-names = "cpu";
+			clock-latency = <100000>;
 		};
 
 		cpu2: cpu@2 {
@@ -68,6 +77,10 @@
 			qcom,acc = <&acc2>;
 			qcom,saw = <&saw2>;
 			cpu-idle-states = <&cpu_spc>;
+			clocks = <&kraitcc 2>;
+			#cooling-cells = <2>;
+			clock-names = "cpu";
+			clock-latency = <100000>;
 		};
 
 		cpu3: cpu@3 {
@@ -79,6 +92,10 @@
 			qcom,acc = <&acc3>;
 			qcom,saw = <&saw3>;
 			cpu-idle-states = <&cpu_spc>;
+			clocks = <&kraitcc 3>;
+			#cooling-cells = <2>;
+			clock-names = "cpu";
+			clock-latency = <100000>;
 		};
 
 		l2: l2-cache {
@@ -97,6 +114,14 @@
 				min-residency-us = <2000>;
 			};
 		};
+	};
+
+	kraitcc: clock-controller {
+		compatible = "qcom,krait-cc-v2";
+		#clock-cells = <1>;
+
+		clocks = <&hfpll0>, <&hfpll1>, <&hfpll2>, <&hfpll3>, <&hfpll_l2>, <&gcc GPLL0_VOTE>;
+		clock-names = "hfpll0", "hfpll1", "hfpll2", "hfpll3", "hfpll_l2", "gpll0_vote";
 	};
 
 	firmware {
@@ -454,6 +479,56 @@
 				reg = <0xf9028000 0x1000>;
 				status = "disabled";
 			};
+		};
+
+		hfpll_l2: clock-controller@f9016000 {
+			compatible = "qcom,msm8974-hfpll";
+			reg = <0xf9016000 0x30>;
+			#clock-cells = <0>;
+
+			clocks = <&xo_board>;
+			clock-names = "xo";
+			clock-output-names = "hfpll_l2";
+		};
+
+		hfpll0: clock-controller@f908a000 {
+			compatible = "qcom,msm8974-hfpll";
+			reg = <0xf908a000 0x30>;
+			#clock-cells = <0>;
+
+			clocks = <&xo_board>;
+			clock-names = "xo";
+			clock-output-names = "hfpll0";
+		};
+
+		hfpll1: clock-controller@f909a000 {
+			compatible = "qcom,msm8974-hfpll";
+			reg = <0xf909a000 0x30>;
+			#clock-cells = <0>;
+
+			clocks = <&xo_board>;
+			clock-names = "xo";
+			clock-output-names = "hfpll1";
+		};
+
+		hfpll2: clock-controller@f90aa000 {
+			compatible = "qcom,msm8974-hfpll";
+			reg = <0xf90aa000 0x30>;
+			#clock-cells = <0>;
+
+			clocks = <&xo_board>;
+			clock-names = "xo";
+			clock-output-names = "hfpll2";
+		};
+
+		hfpll3: clock-controller@f90ba000 {
+			compatible = "qcom,msm8974-hfpll";
+			reg = <0xf90ba000 0x30>;
+			#clock-cells = <0>;
+
+			clocks = <&xo_board>;
+			clock-names = "xo";
+			clock-output-names = "hfpll3";
 		};
 
 		acc0: power-manager@f9088000 {
@@ -1268,6 +1343,17 @@
 		restart@fc4ab000 {
 			compatible = "qcom,pshold";
 			reg = <0xfc4ab000 0x4>;
+		};
+
+		qfprom_pvs: efuse@fc4b8000 {
+			compatible = "qcom,msm8974-qfprom", "qcom,qfprom";
+			reg = <0xfc4b8000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			pvs: pvs@b0 {
+				reg = <0xb0 0x8>;
+			};
 		};
 
 		qfprom: efuse@fc4bc000 {
@@ -2392,6 +2478,13 @@
 					type = "critical";
 				};
 			};
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_alert0>;
+					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				};
+			};
 		};
 
 		cpu1-thermal {
@@ -2410,6 +2503,13 @@
 					temperature = <110000>;
 					hysteresis = <2000>;
 					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_alert1>;
+					cooling-device = <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 				};
 			};
 		};
@@ -2432,6 +2532,13 @@
 					type = "critical";
 				};
 			};
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_alert2>;
+					cooling-device = <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				};
+			};
 		};
 
 		cpu3-thermal {
@@ -2450,6 +2557,13 @@
 					temperature = <110000>;
 					hysteresis = <2000>;
 					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_alert3>;
+					cooling-device = <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 				};
 			};
 		};
