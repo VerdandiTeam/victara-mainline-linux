@@ -140,6 +140,32 @@
        status = "okay";
 };
 
+&blsp2_i2c5 {
+        status = "okay";
+        clock-frequency = <400000>;
+
+        sensor-hub@39 {
+                compatible = "motorola,stm401";
+                reg = <0x39>;
+
+                interrupts-extended = <&tlmm 14 IRQ_TYPE_EDGE_RISING>,
+                                      <&tlmm 95 IRQ_TYPE_EDGE_RISING>;
+                interrupt-names = "data", "wakeup";
+
+                reset-gpios = <&tlmm 145 GPIO_ACTIVE_LOW>;
+                boot-gpios = <&tlmm 33 GPIO_ACTIVE_HIGH>;
+                wakeup-gpios = <&tlmm 0 GPIO_ACTIVE_HIGH>;
+                wakeup-ack-gpios = <&tlmm 1 GPIO_ACTIVE_HIGH>;
+
+                vio-supply = <&pm8941_lvs1>;
+                vdd-supply = <&pm8941_l17>;
+
+                motorola,lux-table = <6 70 86 1174 2800 8000>;
+                motorola,brightness-table = <12 20 25 55 80 111 165>;
+                motorola,prox-settings = <0x6e 0x50 0x64 0x04>;
+        };
+};
+
 &gpu {
         status = "okay";
 };
@@ -411,6 +437,8 @@
 
                         regulator-boot-on;
                 };
+
+                pm8941_lvs1: lvs1 {};
 
                 pm8941_lvs3: lvs3 {};
         };
