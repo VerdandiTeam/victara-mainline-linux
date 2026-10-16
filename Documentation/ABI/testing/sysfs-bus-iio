@@ -2287,6 +2287,32 @@ Description:
 		threshold value increases the sensitivity of tap detection.
 		Units and the exact meaning of value are device-specific.
 
+What:		/sys/.../events/in_gestureY_gesture_en
+KernelVersion:	7.3
+Contact:	linux-iio@vger.kernel.org
+Description:
+		Device generates an event when it recognises the motion
+		gesture Y, for example a "chop chop" shake or a wrist twist
+		recognised by a sensor hub. in_gestureY_label names the
+		gesture. Gestures carry no value: the event itself is the
+		information.
+
+What:		/sys/.../events/in_gestureY_change_either_en
+KernelVersion:	7.3
+Contact:	linux-iio@vger.kernel.org
+Description:
+		Device generates an event when the state of the stateful
+		gesture Y (for example "flat face up" or "stowed in a pocket")
+		changes. The new state is read from in_gestureY_raw.
+
+What:		/sys/bus/iio/devices/iio:deviceX/in_gestureY_raw
+KernelVersion:	7.3
+Contact:	linux-iio@vger.kernel.org
+Description:
+		For a one-shot gesture, the number of times gesture Y has been
+		recognised since the device was probed. For a stateful gesture,
+		its current state: 1 when active, 0 when not.
+
 What:		/sys/.../events/in_accel_gesture_tap_value_available
 KernelVersion:	6.1
 Contact:	linux-iio@vger.kernel.org
