@@ -1,0 +1,110 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/iio/motorola,stm401.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Motorola STM401 sensor hub
+
+maintainers:
+  - Michał Szczepaniak <m.szczepaniak.000@gmail.com>
+
+description:
+  STM32 microcontroller running Motorola firmware, found in the Moto X 2014
+  (victara). All motion, light and proximity sensors of the phone are behind
+  it, and it recognises the Moto gestures on its own.
+
+properties:
+  compatible:
+    const: motorola,stm401
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    items:
+      - description: data ready for the non-wakeup sensors
+      - description: wakeup sensors and gestures
+
+  interrupt-names:
+    items:
+      - const: data
+      - const: wakeup
+
+  reset-gpios:
+    maxItems: 1
+
+  boot-gpios:
+    maxItems: 1
+    description: BSLEN, selects the STM32 bootloader when asserted at reset
+
+  wakeup-gpios:
+    maxItems: 1
+    description: wakes the hub from its low power mode before I2C transfers
+
+  wakeup-ack-gpios:
+    maxItems: 1
+    description: asserted by the hub once it is awake
+
+  vio-supply: true
+  vdd-supply: true
+
+  motorola,lux-table:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    maxItems: 30
+    description: lux thresholds for the hub's display brightness algorithm
+
+  motorola,brightness-table:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    maxItems: 31
+    description: brightness for each lux range, one more entry than the lux table
+
+  motorola,prox-settings:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    items:
+      - description: detect threshold
+      - description: undetect threshold
+      - description: recalibrate threshold
+      - description: pulse count
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - interrupt-names
+  - reset-gpios
+  - vio-supply
+  - vdd-supply
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    #include <dt-bindings/interrupt-controller/irq.h>
+
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        sensor-hub@39 {
+            compatible = "motorola,stm401";
+            reg = <0x39>;
+
+            interrupts-extended = <&tlmm 14 IRQ_TYPE_EDGE_RISING>,
+                                  <&tlmm 95 IRQ_TYPE_EDGE_RISING>;
+            interrupt-names = "data", "wakeup";
+
+            reset-gpios = <&tlmm 145 GPIO_ACTIVE_LOW>;
+            boot-gpios = <&tlmm 33 GPIO_ACTIVE_HIGH>;
+            wakeup-gpios = <&tlmm 0 GPIO_ACTIVE_HIGH>;
+            wakeup-ack-gpios = <&tlmm 1 GPIO_ACTIVE_HIGH>;
+
+            vio-supply = <&pm8941_lvs1>;
+            vdd-supply = <&pm8941_l17>;
+
+            motorola,lux-table = <6 70 86 1174 2800 8000>;
+            motorola,brightness-table = <12 20 25 55 80 111 165>;
+            motorola,prox-settings = <0x6e 0x50 0x64 0x04>;
+        };
+    };
