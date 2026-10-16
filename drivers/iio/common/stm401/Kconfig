@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config IIO_STM401
+	tristate "Motorola STM401 sensor hub"
+	depends on I2C
+	depends on INPUT
+	select IIO_BUFFER
+	select IIO_KFIFO_BUF
+	help
+	  Say yes here to support the Motorola STM401 sensor hub found in
+	  the Moto X 2014 (victara). The hub runs Motorola firmware on an
+	  STM32 and reports the accelerometer, gyroscope, magnetometer,
+	  ambient light, proximity, temperature, rotation vectors and step
+	  counter as IIO devices, and the Moto gestures (chop chop, camera
+	  twist, lift, flat, stowed, significant motion) as IIO events on
+	  the stm401-gestures device and as keys on an input device.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called stm401.
