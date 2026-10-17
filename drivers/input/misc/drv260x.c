@@ -615,16 +615,20 @@ static int drv260x_resume(struct device *dev)
 			return error;
 		}
 
+		gpiod_set_value(haptics->enable_gpio, 1);
+
+		if (haptics->enable_gpio)
+			usleep_range(1000, 2000);
+
 		error = regmap_update_bits(haptics->regmap,
 					   DRV260X_MODE,
 					   DRV260X_STANDBY_MASK, 0);
 		if (error) {
 			dev_err(dev, "Failed to unset standby mode\n");
+			gpiod_set_value(haptics->enable_gpio, 0);
 			regulator_disable(haptics->regulator);
 			return error;
 		}
-
-		gpiod_set_value(haptics->enable_gpio, 1);
 	}
 
 	return 0;
