@@ -756,6 +756,19 @@ config BATTERY_PM8916_BMS_VM
 	  To compile this driver as module, choose M here: the
 	  module will be called pm8916_bms_vm.
 
+config BATTERY_PM8941_BMS
+	tristate "Qualcomm PM8941 BMS fuel gauge support"
+	depends on MFD_SPMI_PMIC || COMPILE_TEST
+	depends on IIO
+	help
+	  Say Y to add support for the coulomb counting Battery Monitoring
+	  System found in Qualcomm PM8941 PMICs. It reports the battery
+	  state of charge from the open circuit voltage and the coulomb
+	  counter.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called qcom_pm8941_bms.
+
 config CHARGER_PM8916_LBC
 	tristate "Qualcomm PM8916 Linear Battery Charger support"
 	depends on MFD_SPMI_PMIC || COMPILE_TEST
