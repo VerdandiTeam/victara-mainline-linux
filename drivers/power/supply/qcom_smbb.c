@@ -37,6 +37,7 @@
 #define SMBB_CHG_VIN_MIN	0x047
 #define SMBB_CHG_CTRL		0x049
 #define CTRL_EN			BIT(7)
+#define CTRL_ON_BAT_FORCE	BIT(0)
 #define SMBB_CHG_VBAT_WEAK	0x052
 #define SMBB_CHG_IBAT_TERM_CHG	0x05b
 #define IBAT_TERM_CHG_IEOC	BIT(7)
@@ -753,6 +754,36 @@ static const struct reg_off_mask_default {
 	{ SMBB_CHG_CTRL, CTRL_EN, CTRL_EN },
 };
 
+static struct smbb_charger *smbb_param_chg;
+static int charging_enabled = 1;
+
+static int smbb_charging_enabled_set(const char *val, const struct kernel_param *kp)
+{
+	bool enable;
+	int rc;
+
+	rc = kstrtobool(val, &enable);
+	if (rc)
+		return rc;
+
+	if (smbb_param_chg) {
+		rc = regmap_update_bits(smbb_param_chg->regmap, smbb_param_chg->addr + SMBB_CHG_CTRL,
+					CTRL_EN | CTRL_ON_BAT_FORCE, enable ? CTRL_EN : CTRL_ON_BAT_FORCE);
+		if (rc)
+			return rc;
+	}
+
+	charging_enabled = enable;
+
+	return 0;
+}
+
+static const struct kernel_param_ops smbb_charging_enabled_ops = {
+	.set = smbb_charging_enabled_set,
+	.get = param_get_int,
+};
+module_param_cb(charging_enabled, &smbb_charging_enabled_ops, &charging_enabled, 0644);
+
 static char *smbb_bif[] = { "smbb-bif" };
 
 static const struct power_supply_desc bat_psy_desc = {
@@ -992,6 +1023,15 @@ static int smbb_charger_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (!charging_enabled) {
+		rc = regmap_update_bits(chg->regmap, chg->addr + SMBB_CHG_CTRL, CTRL_EN | CTRL_ON_BAT_FORCE,
+					CTRL_ON_BAT_FORCE);
+		if (rc)
+			return rc;
+	}
+
+	smbb_param_chg = chg;
+
 	platform_set_drvdata(pdev, chg);
 
 	return 0;
@@ -1002,6 +1042,8 @@ static void smbb_charger_remove(struct platform_device *pdev)
 	struct smbb_charger *chg;
 
 	chg = platform_get_drvdata(pdev);
+
+	smbb_param_chg = NULL;
 
 	regmap_update_bits(chg->regmap, chg->addr + SMBB_CHG_CTRL, CTRL_EN, 0);
 }
