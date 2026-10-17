@@ -6,6 +6,9 @@
 #include <dt-bindings/input/ti-drv260x.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
+#include <dt-bindings/soc/qcom,apr.h>
+#include <dt-bindings/sound/qcom,q6afe.h>
+#include <dt-bindings/sound/qcom,q6asm.h>
 
 / {
        model = "Motorola X 2014";
@@ -92,6 +95,38 @@
                 pinctrl-0 = <&vci_disp_default>;
                 pinctrl-names = "default";
         };
+
+        sound {
+                compatible = "qcom,msm8974-qdsp6-sndcard";
+                model = "msm8974";
+
+                pinctrl-0 = <&quat_mi2s_default>;
+                pinctrl-names = "default";
+
+                mm1-dai-link {
+                        link-name = "MultiMedia1";
+
+                        cpu {
+                                sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
+                        };
+                };
+
+                speaker-dai-link {
+                        link-name = "Quaternary MI2S";
+
+                        cpu {
+                                sound-dai = <&q6afedai QUATERNARY_MI2S_RX>;
+                        };
+
+                        platform {
+                                sound-dai = <&q6routing>;
+                        };
+
+                        codec {
+                                sound-dai = <&speaker_amp>;
+                        };
+                };
+        };
 };
 
 &blsp1_i2c2 {
@@ -101,6 +136,19 @@
                 compatible = "ti,tmp108";
                 reg = <0x48>;
                 #thermal-sensor-cells = <0>;
+        };
+
+        speaker_amp: audio-amplifier@34 {
+                compatible = "nxp,tfa9890";
+                reg = <0x34>;
+
+                vddd-supply = <&pm8941_s3>;
+
+                pinctrl-0 = <&speaker_amp_default>;
+                pinctrl-names = "default";
+
+                sound-name-prefix = "Speaker";
+                #sound-dai-cells = <0>;
         };
 };
 
@@ -511,6 +559,13 @@
                 };
         };
 
+        quat_mi2s_default: quat-mi2s-default-state {
+                pins = "gpio58", "gpio59", "gpio60", "gpio61";
+                function = "qua_mi2s";
+                drive-strength = <8>;
+                bias-disable;
+        };
+
         wcnss_pin_a: wcnss-pin-active-state {
                 wlan-pins {
                         pins = "gpio36", "gpio37", "gpio38", "gpio39", "gpio40";
@@ -575,6 +630,14 @@
                 power-source = <PM8941_GPIO_S3>;
                 qcom,drive-strength = <PMIC_GPIO_STRENGTH_LOW>;
         };
+
+        speaker_amp_default: speaker-amp-default-state {
+                pins = "gpio20";
+                function = "normal";
+
+                output-low;
+                power-source = <PM8941_GPIO_S3>;
+        };
 };
 
 &pm8941_resin {
@@ -591,6 +654,69 @@
                 reg = <7>;
                 color = <LED_COLOR_ID_GREEN>;
                 function = LED_FUNCTION_CHARGING;
+        };
+};
+
+&remoteproc_adsp {
+        status = "okay";
+
+        smd-edge {
+                apr {
+                        compatible = "qcom,apr-v2";
+                        qcom,smd-channels = "apr_audio_svc";
+                        qcom,domain = <APR_DOMAIN_ADSP>;
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+
+                        service@3 {
+                                compatible = "qcom,q6core";
+                                reg = <APR_SVC_ADSP_CORE>;
+                        };
+
+                        service@4 {
+                                compatible = "qcom,q6afe";
+                                reg = <APR_SVC_AFE>;
+
+                                q6afedai: dais {
+                                        compatible = "qcom,q6afe-dais";
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        #sound-dai-cells = <1>;
+
+                                        dai@22 {
+                                                reg = <QUATERNARY_MI2S_RX>;
+                                                qcom,sd-lines = <1>;
+                                        };
+                                };
+                        };
+
+                        service@7 {
+                                compatible = "qcom,q6asm";
+                                reg = <APR_SVC_ASM>;
+
+                                q6asmdai: dais {
+                                        compatible = "qcom,q6asm-dais";
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        #sound-dai-cells = <1>;
+
+                                        dai@0 {
+                                                reg = <MSM_FRONTEND_DAI_MULTIMEDIA1>;
+                                                direction = <Q6ASM_DAI_RX>;
+                                        };
+                                };
+                        };
+
+                        service@8 {
+                                compatible = "qcom,q6adm";
+                                reg = <APR_SVC_ADM>;
+
+                                q6routing: routing {
+                                        compatible = "qcom,q6adm-routing";
+                                        #sound-dai-cells = <0>;
+                                };
+                        };
+                };
         };
 };
 
