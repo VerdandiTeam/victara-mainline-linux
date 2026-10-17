@@ -518,6 +518,7 @@ static int a3xx_vbif_halt(struct msm_gpu *gpu)
 
 static int a3xx_pm_suspend(struct msm_gpu *gpu)
 {
+	struct a3xx_gpu *a3xx_gpu = to_a3xx_gpu(to_adreno_gpu(gpu));
 	int ret;
 
 	if (!a3xx_idle(gpu))
@@ -527,7 +528,24 @@ static int a3xx_pm_suspend(struct msm_gpu *gpu)
 	if (ret)
 		return ret;
 
-	return msm_gpu_pm_suspend(gpu);
+	ret = msm_gpu_pm_suspend(gpu);
+	if (ret)
+		return ret;
+
+	icc_set_bw(a3xx_gpu->icc_path, 0, 0);
+	icc_set_bw(a3xx_gpu->ocmem_icc_path, 0, 0);
+
+	return 0;
+}
+
+static int a3xx_pm_resume(struct msm_gpu *gpu)
+{
+	struct a3xx_gpu *a3xx_gpu = to_a3xx_gpu(to_adreno_gpu(gpu));
+
+	icc_set_bw(a3xx_gpu->icc_path, 0, Bps_to_icc(gpu->fast_rate) * 8);
+	icc_set_bw(a3xx_gpu->ocmem_icc_path, 0, Bps_to_icc(gpu->fast_rate) * 8);
+
+	return msm_gpu_pm_resume(gpu);
 }
 
 static u32 a3xx_get_rptr(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
@@ -601,6 +619,9 @@ static struct msm_gpu *a3xx_gpu_init(struct drm_device *dev)
 	icc_set_bw(icc_path, 0, Bps_to_icc(gpu->fast_rate) * 8);
 	icc_set_bw(ocmem_icc_path, 0, Bps_to_icc(gpu->fast_rate) * 8);
 
+	a3xx_gpu->icc_path = icc_path;
+	a3xx_gpu->ocmem_icc_path = ocmem_icc_path;
+
 	return gpu;
 
 fail:
@@ -616,7 +637,7 @@ const struct adreno_gpu_funcs a3xx_gpu_funcs = {
 		.set_param = adreno_set_param,
 		.hw_init = a3xx_hw_init,
 		.pm_suspend = a3xx_pm_suspend,
-		.pm_resume = msm_gpu_pm_resume,
+		.pm_resume = a3xx_pm_resume,
 		.recover = a3xx_recover,
 		.submit = a3xx_submit,
 		.active_ring = adreno_active_ring,

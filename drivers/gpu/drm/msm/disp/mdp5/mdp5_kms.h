@@ -7,6 +7,8 @@
 #ifndef __MDP5_KMS_H__
 #define __MDP5_KMS_H__
 
+#include <linux/interconnect.h>
+
 #include "msm_drv.h"
 #include "msm_kms.h"
 #include "disp/mdp_kms.h"
@@ -23,6 +25,8 @@ struct mdp5_kms {
 	struct drm_device *dev;
 
 	struct platform_device *pdev;
+
+	struct icc_path *paths[3];
 
 	unsigned num_hwpipes;
 	struct mdp5_hw_pipe *hwpipes[SSPP_MAX];

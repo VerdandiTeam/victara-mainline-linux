@@ -247,6 +247,9 @@ static int mdp5_disable(struct mdp5_kms *mdp5_kms)
 	clk_disable_unprepare(mdp5_kms->core_clk);
 	clk_disable_unprepare(mdp5_kms->lut_clk);
 
+	for (int i = 0; i < ARRAY_SIZE(mdp5_kms->paths); i++)
+		icc_set_bw(mdp5_kms->paths[i], 0, 0);
+
 	return 0;
 }
 
@@ -255,6 +258,9 @@ static int mdp5_enable(struct mdp5_kms *mdp5_kms)
 	DBG("");
 
 	mdp5_kms->enable_count++;
+
+	for (int i = 0; i < ARRAY_SIZE(mdp5_kms->paths); i++)
+		icc_set_bw(mdp5_kms->paths[i], 0, MBps_to_icc(6400));
 
 	clk_prepare_enable(mdp5_kms->ahb_clk);
 	clk_prepare_enable(mdp5_kms->axi_clk);
@@ -777,7 +783,7 @@ fail:
 	return ret;
 }
 
-static int mdp5_setup_interconnect(struct platform_device *pdev)
+static int mdp5_setup_interconnect(struct mdp5_kms *mdp5_kms, struct platform_device *pdev)
 {
 	struct icc_path *path0 = msm_icc_get(&pdev->dev, "mdp0-mem");
 	struct icc_path *path1 = msm_icc_get(&pdev->dev, "mdp1-mem");
@@ -798,11 +804,16 @@ static int mdp5_setup_interconnect(struct platform_device *pdev)
 	}
 
 	icc_set_bw(path0, 0, MBps_to_icc(6400));
+	mdp5_kms->paths[0] = path0;
 
-	if (!IS_ERR_OR_NULL(path1))
+	if (!IS_ERR_OR_NULL(path1)) {
 		icc_set_bw(path1, 0, MBps_to_icc(6400));
-	if (!IS_ERR_OR_NULL(path_rot))
+		mdp5_kms->paths[1] = path1;
+	}
+	if (!IS_ERR_OR_NULL(path_rot)) {
 		icc_set_bw(path_rot, 0, MBps_to_icc(6400));
+		mdp5_kms->paths[2] = path_rot;
+	}
 
 	return 0;
 }
@@ -821,7 +832,7 @@ static int mdp5_dev_probe(struct platform_device *pdev)
 	if (!mdp5_kms)
 		return -ENOMEM;
 
-	ret = mdp5_setup_interconnect(pdev);
+	ret = mdp5_setup_interconnect(mdp5_kms, pdev);
 	if (ret)
 		return ret;
 
