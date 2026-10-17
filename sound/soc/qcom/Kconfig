@@ -156,6 +156,17 @@ config SND_SOC_QDSP6
 	 audio drivers. This includes q6asm, q6adm,
 	 q6afe interfaces to DSP using apr.
 
+config SND_SOC_MSM8974
+	tristate "SoC Machine driver for MSM8974 QDSP6 boards"
+	depends on QCOM_APR
+	depends on COMMON_CLK
+	select SND_SOC_QDSP6
+	select SND_SOC_QCOM_COMMON
+	help
+	  Support for MI2S audio through the QDSP6 on MSM8974 SoC-based
+	  systems.
+	  Say Y or M if you want to use audio on this SoC.
+
 config SND_SOC_MSM8996
 	tristate "SoC Machine driver for MSM8996 and APQ8096 boards"
 	depends on QCOM_APR
