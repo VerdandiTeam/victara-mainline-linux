@@ -838,3 +838,47 @@
 &cpu3 {
         cpu-supply = <&pm8841_s5>;
 };
+
+&{/soc/etf@fc307000} {
+        status = "disabled";
+};
+
+&{/soc/tpiu@fc318000} {
+        status = "disabled";
+};
+
+&{/soc/funnel@fc31a000} {
+        status = "disabled";
+};
+
+&{/soc/funnel@fc31b000} {
+        status = "disabled";
+};
+
+&{/soc/replicator@fc31c000} {
+        status = "disabled";
+};
+
+&{/soc/etr@fc322000} {
+        status = "disabled";
+};
+
+&{/soc/etm@fc33c000} {
+        status = "disabled";
+};
+
+&{/soc/etm@fc33d000} {
+        status = "disabled";
+};
+
+&{/soc/etm@fc33e000} {
+        status = "disabled";
+};
+
+&{/soc/etm@fc33f000} {
+        status = "disabled";
+};
+
+&{/soc/funnel@fc345000} {
+        status = "disabled";
+};
