@@ -8,6 +8,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/interrupt.h>
+#include <linux/iopoll.h>
 #include <linux/mfd/syscon.h>
 #include <linux/of.h>
 #include <linux/of_graph.h>
@@ -2181,6 +2182,17 @@ int msm_dsi_host_xfer_prepare(struct mipi_dsi_host *host,
 	pm_runtime_get_sync(&msm_host->pdev->dev);
 	cfg_hnd->ops->link_clk_set_rate(msm_host);
 	cfg_hnd->ops->link_clk_enable(msm_host);
+
+	if (!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO) &&
+	    cfg_hnd->major == MSM_DSI_VER_MAJOR_6G &&
+	    cfg_hnd->minor < MSM_DSI_6G_VER_MINOR_V1_2 &&
+	    msm_host->power_on && msm_host->enabled) {
+		u32 status;
+
+		if (readl_poll_timeout(msm_host->ctrl_base + REG_DSI_STATUS0, status,
+				       !(status & DSI_STATUS0_CMD_MODE_MDP_BUSY), 100, 20000))
+			pr_warn_ratelimited("%s: cmd mode mdp still busy\n", __func__);
+	}
 
 	/* TODO: vote for bus bandwidth */
 
