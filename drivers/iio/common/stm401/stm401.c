@@ -130,6 +130,7 @@ enum stm401_gesture_id {
 struct stm401_sensor_info {
 	const char *name;
 	bool wake;
+	bool on_change;
 	u32 mask;
 	u8 data_reg;
 	u8 read_len;
@@ -365,6 +366,7 @@ static const struct stm401_sensor_info stm401_sensor_infos[STM401_NUM_SENSORS] =
 	},
 	[STM401_TEMP] = {
 		.name = "stm401-temp",
+		.on_change = true,
 		.mask = STM401_M_TEMPERATURE,
 		.data_reg = STM401_REG_TEMPERATURE,
 		.read_len = 2,
@@ -386,7 +388,7 @@ static const struct stm401_sensor_info stm401_sensor_infos[STM401_NUM_SENSORS] =
 		.scan_values = 4,
 		.scale_type = IIO_VAL_FRACTIONAL,
 		.scale_val = 1,
-		.scale_val2 = 16384,
+		.scale_val2 = 32768,
 	},
 	[STM401_ROTATION] = {
 		.name = "stm401-rotation",
@@ -400,10 +402,11 @@ static const struct stm401_sensor_info stm401_sensor_infos[STM401_NUM_SENSORS] =
 		.scan_values = 4,
 		.scale_type = IIO_VAL_FRACTIONAL,
 		.scale_val = 1,
-		.scale_val2 = 16384,
+		.scale_val2 = 32768,
 	},
 	[STM401_STEPS] = {
 		.name = "stm401-steps",
+		.on_change = true,
 		.mask = STM401_M_STEP_COUNTER,
 		.data_reg = STM401_REG_STEP_COUNTER,
 		.read_len = 8,
@@ -1080,7 +1083,7 @@ static int stm401_read_sample(struct stm401_sensor *sensor, const struct iio_cha
 	if (ret)
 		return ret;
 
-	if (sensor->info->wake && !sensor->valid) {
+	if ((sensor->info->wake || sensor->info->on_change) && !sensor->valid) {
 		mutex_lock(&hub->lock);
 		stm401_wake(hub);
 		ret = stm401_handle_sensor(hub, sensor, iio_get_time_ns(sensor->indio_dev));
