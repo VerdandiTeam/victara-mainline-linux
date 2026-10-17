@@ -88,6 +88,20 @@ static void request_pp_done_pending(struct drm_crtc *crtc)
 	reinit_completion(&mdp5_crtc->pp_completion);
 }
 
+static void mdp5_crtc_wait_for_pp_done(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct mdp5_crtc *mdp5_crtc = to_mdp5_crtc(crtc);
+	struct mdp5_crtc_state *mdp5_cstate = to_mdp5_crtc_state(crtc->state);
+	int ret;
+
+	ret = wait_for_completion_timeout(&mdp5_crtc->pp_completion,
+						msecs_to_jiffies(50));
+	if (ret == 0)
+		dev_warn_ratelimited(dev->dev, "pp done time out, lm=%d\n",
+				     mdp5_cstate->pipeline.mixer->lm);
+}
+
 static u32 crtc_flush(struct drm_crtc *crtc, u32 flush_mask)
 {
 	struct mdp5_crtc_state *mdp5_cstate = to_mdp5_crtc_state(crtc->state);
@@ -501,8 +515,10 @@ static void mdp5_crtc_atomic_disable(struct drm_crtc *crtc,
 	/* Disable/save vblank irq handling before power is disabled */
 	drm_crtc_vblank_off(crtc);
 
-	if (mdp5_cstate->cmd_mode)
+	if (mdp5_cstate->cmd_mode) {
 		mdp_irq_unregister(&mdp5_kms->base, &mdp5_crtc->pp_done);
+		complete_all(&mdp5_crtc->pp_completion);
+	}
 
 	mdp_irq_unregister(&mdp5_kms->base, &mdp5_crtc->err);
 	pm_runtime_put_sync(dev);
@@ -826,8 +842,10 @@ static void mdp5_crtc_atomic_flush(struct drm_crtc *crtc,
 	 * This is safe because no pp_done will happen before SW trigger
 	 * in command mode.
 	 */
-	if (mdp5_cstate->cmd_mode)
+	if (mdp5_cstate->cmd_mode) {
+		mdp5_crtc_wait_for_pp_done(crtc);
 		request_pp_done_pending(crtc);
+	}
 
 	mdp5_crtc->flushed_mask = crtc_flush_all(crtc);
 
@@ -1213,20 +1231,6 @@ static void mdp5_crtc_pp_done_irq(struct mdp_irq *irq, uint32_t irqstatus)
 	complete_all(&mdp5_crtc->pp_completion);
 }
 
-static void mdp5_crtc_wait_for_pp_done(struct drm_crtc *crtc)
-{
-	struct drm_device *dev = crtc->dev;
-	struct mdp5_crtc *mdp5_crtc = to_mdp5_crtc(crtc);
-	struct mdp5_crtc_state *mdp5_cstate = to_mdp5_crtc_state(crtc->state);
-	int ret;
-
-	ret = wait_for_completion_timeout(&mdp5_crtc->pp_completion,
-						msecs_to_jiffies(50));
-	if (ret == 0)
-		dev_warn_ratelimited(dev->dev, "pp done time out, lm=%d\n",
-				     mdp5_cstate->pipeline.mixer->lm);
-}
-
 static void mdp5_crtc_wait_for_flush_done(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
@@ -1309,9 +1313,7 @@ void mdp5_crtc_wait_for_commit_done(struct drm_crtc *crtc)
 {
 	struct mdp5_crtc_state *mdp5_cstate = to_mdp5_crtc_state(crtc->state);
 
-	if (mdp5_cstate->cmd_mode)
-		mdp5_crtc_wait_for_pp_done(crtc);
-	else
+	if (!mdp5_cstate->cmd_mode)
 		mdp5_crtc_wait_for_flush_done(crtc);
 }
 
@@ -1340,6 +1342,7 @@ struct drm_crtc *mdp5_crtc_init(struct drm_device *dev,
 	spin_lock_init(&mdp5_crtc->lm_lock);
 	spin_lock_init(&mdp5_crtc->cursor.lock);
 	init_completion(&mdp5_crtc->pp_completion);
+	complete_all(&mdp5_crtc->pp_completion);
 
 	mdp5_crtc->vblank.irq = mdp5_crtc_vblank_irq;
 	mdp5_crtc->err.irq = mdp5_crtc_err_irq;
