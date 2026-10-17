@@ -22,6 +22,7 @@ struct smd_v1 {
 	struct mipi_dsi_device *dsi;
 	struct regulator_bulk_data *supplies;
 	struct gpio_desc *reset_gpio;
+	bool hbm;
 };
 
 static const struct regulator_bulk_data smd_v1_supplies[] = {
@@ -54,8 +55,8 @@ static int smd_v1_on(struct smd_v1 *ctx)
 	mipi_dsi_usleep_range(&dsi_ctx, 1000, 2000);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, MIPI_DCS_WRITE_POWER_SAVE, 0x03);
 	mipi_dsi_usleep_range(&dsi_ctx, 1000, 2000);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY,
-				     0x20);
+	mipi_dsi_dcs_write_var_seq_multi(&dsi_ctx, MIPI_DCS_WRITE_CONTROL_DISPLAY,
+					 ctx->hbm ? 0xe0 : 0x20);
 	mipi_dsi_usleep_range(&dsi_ctx, 1000, 2000);
 	mipi_dsi_dcs_set_column_address_multi(&dsi_ctx, 0x0000, 0x0437);
 	mipi_dsi_dcs_set_page_address_multi(&dsi_ctx, 0x0000, 0x077f);
@@ -206,6 +207,52 @@ smd_v1_create_backlight(struct mipi_dsi_device *dsi)
 					      &smd_v1_bl_ops, &props);
 }
 
+static ssize_t hbm_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct smd_v1 *ctx = mipi_dsi_get_drvdata(to_mipi_dsi_device(dev));
+
+	return sysfs_emit(buf, "%d\n", ctx->hbm);
+}
+
+static ssize_t hbm_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(dev);
+	struct smd_v1 *ctx = mipi_dsi_get_drvdata(dsi);
+	u8 value;
+	bool enable;
+	int ret;
+
+	ret = kstrtobool(buf, &enable);
+	if (ret)
+		return ret;
+
+	ctx->hbm = enable;
+
+	if (!ctx->panel.prepared)
+		return count;
+
+	value = enable ? 0xe0 : 0x20;
+
+	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
+	ret = mipi_dsi_dcs_write(dsi, MIPI_DCS_WRITE_CONTROL_DISPLAY, &value, 1);
+	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
+
+	if (ret < 0)
+		return ret;
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(hbm);
+
+static struct attribute *smd_v1_attrs[] = {
+	&dev_attr_hbm.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(smd_v1);
+
 static int smd_v1_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
@@ -279,6 +326,7 @@ static struct mipi_dsi_driver smd_v1_driver = {
 	.driver = {
 		.name = "panel-smd-v1",
 		.of_match_table = smd_v1_of_match,
+		.dev_groups = smd_v1_groups,
 	},
 };
 module_mipi_dsi_driver(smd_v1_driver);
