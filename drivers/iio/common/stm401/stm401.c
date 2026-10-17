@@ -9,6 +9,7 @@
 #include <linux/bitops.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
+#include <linux/devm-helpers.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
@@ -176,6 +177,10 @@ struct stm401_hub {
 	bool suspended;
 	bool wake_pending;
 	bool lowpower;
+
+	struct work_struct reset_work;
+	bool in_reset;
+	bool reset_pending;
 
 	struct regulator_bulk_data supplies[2];
 
@@ -541,10 +546,16 @@ static int stm401_write(struct stm401_hub *hub, const u8 *buf, int len)
 		if (ret == len)
 			return 0;
 
+		if (ret == -ETIMEDOUT)
+			break;
+
 		msleep(STM401_I2C_RETRY_DELAY_MS);
 	} while (++tries < STM401_I2C_RETRIES);
 
 	dev_err(hub->dev, "write of reg 0x%02x failed: %d\n", buf[0], ret);
+
+	if (!hub->in_reset)
+		schedule_work(&hub->reset_work);
 
 	return ret < 0 ? ret : -EIO;
 }
@@ -572,10 +583,16 @@ static int stm401_read(struct stm401_hub *hub, u8 reg, u8 *buf, int len)
 		if (ret == ARRAY_SIZE(msgs))
 			return 0;
 
+		if (ret == -ETIMEDOUT)
+			break;
+
 		msleep(STM401_I2C_RETRY_DELAY_MS);
 	} while (++tries < STM401_I2C_RETRIES);
 
 	dev_err(hub->dev, "read of reg 0x%02x failed: %d\n", reg, ret);
+
+	if (!hub->in_reset)
+		schedule_work(&hub->reset_work);
 
 	return ret < 0 ? ret : -EIO;
 }
@@ -738,6 +755,8 @@ static int stm401_reset_and_init(struct stm401_hub *hub)
 	int ret;
 	int i;
 
+	hub->in_reset = true;
+
 	gpiod_set_value_cansleep(hub->boot_gpio, 0);
 
 	do {
@@ -795,7 +814,25 @@ static int stm401_reset_and_init(struct stm401_hub *hub)
 out:
 	stm401_sleep(hub);
 
+	hub->in_reset = false;
+
 	return ret;
+}
+
+static void stm401_reset_work(struct work_struct *work)
+{
+	struct stm401_hub *hub = container_of(work, struct stm401_hub, reset_work);
+
+	mutex_lock(&hub->lock);
+
+	if (hub->suspended) {
+		hub->reset_pending = true;
+	} else {
+		dev_warn(hub->dev, "hub stopped responding, resetting it\n");
+		stm401_reset_and_init(hub);
+	}
+
+	mutex_unlock(&hub->lock);
 }
 
 static void stm401_parse_sample(struct stm401_sensor *sensor, const u8 *data)
@@ -1473,6 +1510,10 @@ static int stm401_probe(struct i2c_client *client)
 	if (ret)
 		return ret;
 
+	ret = devm_work_autocancel(dev, &hub->reset_work, stm401_reset_work);
+	if (ret)
+		return ret;
+
 	ret = stm401_parse_dt(hub);
 	if (ret)
 		return ret;
@@ -1588,9 +1629,15 @@ static int stm401_resume(struct device *dev)
 
 	hub->suspended = false;
 
-	stm401_wake(hub);
-	stm401_write_masks(hub);
-	stm401_sleep(hub);
+	if (hub->reset_pending) {
+		hub->reset_pending = false;
+		hub->wake_pending = false;
+		stm401_reset_and_init(hub);
+	} else {
+		stm401_wake(hub);
+		stm401_write_masks(hub);
+		stm401_sleep(hub);
+	}
 
 	if (hub->wake_pending) {
 		hub->wake_pending = false;
