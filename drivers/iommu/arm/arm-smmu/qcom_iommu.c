@@ -721,6 +721,21 @@ static void qcom_iommu_iotlb_sync(struct iommu_domain *domain,
 	qcom_iommu_flush_iotlb_all(domain);
 }
 
+static int qcom_iommu_iotlb_sync_map(struct iommu_domain *domain, unsigned long iova, size_t size)
+{
+	struct qcom_iommu_domain *qcom_domain = to_qcom_iommu_domain(domain);
+	struct io_pgtable *pgtable = container_of(qcom_domain->pgtbl_ops, struct io_pgtable, ops);
+
+	if (!qcom_domain->pgtbl_ops)
+		return 0;
+
+	pm_runtime_get_sync(qcom_domain->iommu->dev);
+	qcom_iommu_tlb_inv_context(pgtable->cookie);
+	pm_runtime_put_sync(qcom_domain->iommu->dev);
+
+	return 0;
+}
+
 static phys_addr_t qcom_iommu_iova_to_phys(struct iommu_domain *domain,
 					   dma_addr_t iova)
 {
@@ -834,6 +849,7 @@ static const struct iommu_ops qcom_iommu_ops = {
 		.unmap_pages	= qcom_iommu_unmap,
 		.flush_iotlb_all = qcom_iommu_flush_iotlb_all,
 		.iotlb_sync	= qcom_iommu_iotlb_sync,
+		.iotlb_sync_map	= qcom_iommu_iotlb_sync_map,
 		.iova_to_phys	= qcom_iommu_iova_to_phys,
 		.free		= qcom_iommu_domain_free,
 	}
