@@ -173,6 +173,9 @@ static int mdp5_plane_atomic_check_with_state(struct drm_crtc_state *crtc_state,
 	int min_scale, max_scale;
 	int ret;
 
+	if (!to_mdp5_plane_state(old_state)->hwpipe)
+		mdp5_state->hwpipe = mdp5_state->r_hwpipe = NULL;
+
 	DBG("%s: check (%d -> %d)", plane->name,
 			plane_enabled(old_state), plane_enabled(state));
 
