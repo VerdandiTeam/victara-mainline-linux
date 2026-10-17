@@ -183,6 +183,18 @@
 			qcom,external-resistor-micro-ohms = <10000>;
 		};
 
+		pm8941_bms: bms@4000 {
+			compatible = "qcom,pm8941-bms";
+			reg = <0x4000>, <0x3800>;
+			qcom,rsense-micro-ohms = <10000>;
+			io-channels = <&pm8941_vadc VADC_VBAT_SNS>,
+				      <&pm8941_vadc VADC_REF_625MV>,
+				      <&pm8941_vadc VADC_REF_1250MV>;
+			io-channel-names = "vbat", "ref-625mv", "ref-1250mv";
+			power-supplies = <&smbb>;
+			status = "disabled";
+		};
+
 		pm8941_coincell: charger@2800 {
 			compatible = "qcom,pm8941-coincell";
 			reg = <0x2800>;
