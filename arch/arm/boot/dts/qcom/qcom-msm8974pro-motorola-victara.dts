@@ -259,6 +259,11 @@
         vddio-supply = <&pm8941_l12>;
 };
 
+&mmcc {
+        power-domains = <&rpmpd MSM8974_VDDGFX>;
+        required-opps = <&rpmpd_opp_svs_soc>;
+};
+
 &pronto {
         status = "okay";
 
