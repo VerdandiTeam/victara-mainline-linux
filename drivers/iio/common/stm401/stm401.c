@@ -1280,7 +1280,8 @@ static int stm401_gesture_write_event_config(struct iio_dev *indio_dev, const st
 
 	ret = stm401_update_masks(hub);
 
-	if (!ret && state && info->stateful && !hub->suspended && !stm401_read(hub, info->data_reg, &data, 1))
+	if (!ret && state && info->stateful && info->data_reg != STM401_REG_FLAT_DATA && !hub->suspended &&
+	    !stm401_read(hub, info->data_reg, &data, 1))
 		hub->gesture_raw[chan->channel] = !!data;
 
 	stm401_sleep(hub);
