@@ -181,12 +181,18 @@ static int msm8974_get_bw(struct icc_node *node, u32 *avg, u32 *peak)
 	return 0;
 };
 
+static const u16 mas_ampss_m0_links[] = {
+	MSM8974_BIMC_SLV_EBI_CH0
+};
+
 static struct qcom_icc_node mas_ampss_m0 = {
 	.name = "mas_ampss_m0",
 	.id = MSM8974_BIMC_MAS_AMPSS_M0,
 	.buswidth = 8,
-	.mas_rpm_id = 0,
+	.mas_rpm_id = -1,
 	.slv_rpm_id = -1,
+	.num_links = ARRAY_SIZE(mas_ampss_m0_links),
+	.links = mas_ampss_m0_links,
 };
 
 static struct qcom_icc_node mas_ampss_m1 = {
