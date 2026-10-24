@@ -273,6 +273,23 @@
 		hwlocks = <&tcsr_mutex 3>;
 	};
 
+	mpm: interrupt-controller {
+		compatible = "qcom,mpm";
+		qcom,rpm-msg-ram = <&apss_mpm>;
+		interrupts = <GIC_SPI 171 IRQ_TYPE_EDGE_RISING>;
+		mboxes = <&apcs 1>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		#power-domain-cells = <0>;
+		interrupt-parent = <&intc>;
+		qcom,mpm-pin-count = <64>;
+		qcom,mpm-pin-map = <2 184>,
+				   <47 15>,
+				   <50 140>,
+				   <53 72>,
+				   <62 190>;
+	};
+
 	smp2p-adsp {
 		compatible = "qcom,smp2p";
 		qcom,smem = <443>, <429>;
@@ -1231,6 +1248,10 @@
 				reg = <0x150 0x14>;
 			};
 
+			apss_mpm: sram@1d0 {
+				reg = <0x1d0 0x30>;
+			};
+
 			mpss_master_stats: sram@b50 {
 				reg = <0xb50 0x14>;
 			};
@@ -1625,7 +1646,7 @@
 			      <0xfc4cb000 0x1000>,
 			      <0xfc4ca000 0x1000>;
 			interrupt-names = "periph_irq";
-			interrupts = <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts-extended = <&mpm 62 IRQ_TYPE_LEVEL_HIGH>;
 			qcom,ee = <0>;
 			qcom,channel = <0>;
 			#address-cells = <2>;
@@ -1729,6 +1750,7 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			interrupts = <GIC_SPI 208 IRQ_TYPE_LEVEL_HIGH>;
+			wakeup-parent = <&mpm>;
 
 			sdc1_off: sdc1-off-state {
 				clk-pins {
