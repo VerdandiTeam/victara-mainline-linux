@@ -206,6 +206,30 @@ static const struct spm_reg_data spm_reg_8974_8084_cpu  = {
 	.start_index[PM_SLEEP_MODE_SPC] = 3,
 };
 
+static const u16 spm_reg_offset_v2_1_l2[SPM_REG_NR] = {
+	[SPM_REG_CFG]		= 0x08,
+	[SPM_REG_SPM_CTL]	= 0x30,
+	[SPM_REG_DLY]		= 0x34,
+	[SPM_REG_PMIC_DATA_0]	= 0x40,
+	[SPM_REG_PMIC_DATA_1]	= 0x44,
+	[SPM_REG_SEQ_ENTRY]	= 0x80,
+};
+
+static const struct spm_reg_data spm_reg_8974_l2 = {
+	.reg_offset = spm_reg_offset_v2_1_l2,
+	.spm_cfg = 0x14,
+	.spm_dly = 0x3C102800,
+	.pmic_data[0] = 0x02030080,
+	.pmic_data[1] = 0x00030000,
+	.seq = { 0x1F, 0x00, 0x03, 0x00, 0x0F,
+		0x00, 0x32, 0x42, 0x03, 0x44, 0x50, 0x02, 0x32, 0x50, 0x0F,
+		0x00, 0x10, 0x32, 0xB0, 0x11, 0x42, 0x07, 0x01, 0xB0, 0x12, 0x44, 0x50, 0x02, 0x32, 0x50, 0x0F },
+	.start_index[PM_SLEEP_MODE_STBY] = 0,
+	.start_index[PM_SLEEP_MODE_RET] = 0,
+	.start_index[PM_SLEEP_MODE_SPC] = 5,
+	.start_index[PM_SLEEP_MODE_PC] = 15,
+};
+
 /* SPM register data for 8226 */
 static const struct spm_reg_data spm_reg_8226_cpu  = {
 	.reg_offset = spm_reg_offset_v2_1,
@@ -489,6 +513,8 @@ static const struct of_device_id spm_match_table[] = {
 	  .data = &spm_reg_8939_cpu },
 	{ .compatible = "qcom,msm8974-saw2-v2.1-cpu",
 	  .data = &spm_reg_8974_8084_cpu },
+	{ .compatible = "qcom,msm8974-saw2-v2.1-l2",
+	  .data = &spm_reg_8974_l2 },
 	{ .compatible = "qcom,msm8976-gold-saw2-v2.3-l2",
 	  .data = &spm_reg_8976_gold_l2 },
 	{ .compatible = "qcom,msm8976-silver-saw2-v2.3-l2",
