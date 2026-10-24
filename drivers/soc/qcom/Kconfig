@@ -57,6 +57,18 @@ config QCOM_GSBI
 	  functions for connecting the underlying serial UART, SPI, and I2C
 	  devices to the output pins.
 
+config QCOM_KRAIT_L2_CACHE
+	tristate "Qualcomm Krait L2 cache scaling"
+	depends on ARCH_QCOM || COMPILE_TEST
+	depends on INTERCONNECT
+	depends on COMMON_CLK
+	select INTERCONNECT_CLK
+	select PM_OPP
+	help
+	  Support for scaling the L2 cache frequency on Qualcomm Krait SoCs.
+	  The L2 is registered as an interconnect provider, so the CPUs vote
+	  for its frequency through their OPP tables.
+
 config QCOM_LLCC
 	tristate "Qualcomm LLCC driver"
 	select REGMAP_MMIO
