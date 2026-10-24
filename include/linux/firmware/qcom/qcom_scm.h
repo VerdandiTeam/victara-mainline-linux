@@ -14,6 +14,7 @@
 #define QCOM_SCM_VERSION(major, minor)	(((major) << 16) | ((minor) & 0xFF))
 #define QCOM_SCM_CPU_PWR_DOWN_L2_ON	0x0
 #define QCOM_SCM_CPU_PWR_DOWN_L2_OFF	0x1
+#define QCOM_SCM_CPU_PWR_DOWN_L2_GDHS	0x3
 #define QCOM_SCM_HDCP_MAX_REQ_CNT	5
 
 struct qcom_scm_hdcp_req {
