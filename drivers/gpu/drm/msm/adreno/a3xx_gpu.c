@@ -532,6 +532,8 @@ static int a3xx_pm_suspend(struct msm_gpu *gpu)
 	if (ret)
 		return ret;
 
+	adreno_gpu_ocmem_suspend(&a3xx_gpu->ocmem);
+
 	icc_set_bw(a3xx_gpu->icc_path, 0, 0);
 	icc_set_bw(a3xx_gpu->ocmem_icc_path, 0, 0);
 
@@ -541,9 +543,14 @@ static int a3xx_pm_suspend(struct msm_gpu *gpu)
 static int a3xx_pm_resume(struct msm_gpu *gpu)
 {
 	struct a3xx_gpu *a3xx_gpu = to_a3xx_gpu(to_adreno_gpu(gpu));
+	int ret;
 
 	icc_set_bw(a3xx_gpu->icc_path, 0, Bps_to_icc(gpu->fast_rate) * 8);
 	icc_set_bw(a3xx_gpu->ocmem_icc_path, 0, Bps_to_icc(gpu->fast_rate) * 8);
+
+	ret = adreno_gpu_ocmem_resume(to_adreno_gpu(gpu), &a3xx_gpu->ocmem);
+	if (ret)
+		return ret;
 
 	return msm_gpu_pm_resume(gpu);
 }

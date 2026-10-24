@@ -634,6 +634,9 @@ struct msm_ringbuffer *adreno_active_ring(struct msm_gpu *gpu);
 int adreno_gpu_ocmem_init(struct device *dev, struct adreno_gpu *adreno_gpu,
 			  struct adreno_ocmem *ocmem);
 void adreno_gpu_ocmem_cleanup(struct adreno_ocmem *ocmem);
+int adreno_gpu_ocmem_resume(struct adreno_gpu *adreno_gpu,
+			    struct adreno_ocmem *ocmem);
+void adreno_gpu_ocmem_suspend(struct adreno_ocmem *ocmem);
 
 int adreno_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 		struct adreno_gpu *gpu, const struct adreno_gpu_funcs *funcs,

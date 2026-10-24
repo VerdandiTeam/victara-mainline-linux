@@ -1181,9 +1181,35 @@ int adreno_gpu_ocmem_init(struct device *dev, struct adreno_gpu *adreno_gpu,
 
 void adreno_gpu_ocmem_cleanup(struct adreno_ocmem *adreno_ocmem)
 {
-	if (adreno_ocmem && adreno_ocmem->base)
+	if (adreno_ocmem && adreno_ocmem->hdl)
 		ocmem_free(adreno_ocmem->ocmem, OCMEM_GRAPHICS,
 			   adreno_ocmem->hdl);
+}
+
+int adreno_gpu_ocmem_resume(struct adreno_gpu *adreno_gpu,
+			    struct adreno_ocmem *adreno_ocmem)
+{
+	struct ocmem_buf *ocmem_hdl;
+
+	if (!adreno_ocmem->ocmem || adreno_ocmem->hdl)
+		return 0;
+
+	ocmem_hdl = ocmem_allocate(adreno_ocmem->ocmem, OCMEM_GRAPHICS, adreno_gpu->info->gmem);
+	if (IS_ERR(ocmem_hdl))
+		return PTR_ERR(ocmem_hdl);
+
+	adreno_ocmem->hdl = ocmem_hdl;
+
+	return 0;
+}
+
+void adreno_gpu_ocmem_suspend(struct adreno_ocmem *adreno_ocmem)
+{
+	if (!adreno_ocmem->hdl)
+		return;
+
+	ocmem_free(adreno_ocmem->ocmem, OCMEM_GRAPHICS, adreno_ocmem->hdl);
+	adreno_ocmem->hdl = NULL;
 }
 
 int adreno_read_speedbin(struct device *dev, u32 *speedbin)
