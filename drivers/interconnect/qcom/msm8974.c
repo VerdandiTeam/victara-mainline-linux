@@ -1007,6 +1007,7 @@ static const struct qcom_icc_desc msm8974_onoc = {
 	.num_nodes = ARRAY_SIZE(msm8974_onoc_nodes),
 	.bus_clk_desc = &gpu_mem_2_clk,
 	.get_bw = msm8974_get_bw,
+	.keep_alive = true,
 	.ignore_enxio = true,
 };
 
