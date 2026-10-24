@@ -231,6 +231,14 @@ struct ocmem_buf *ocmem_allocate(struct ocmem *ocmem, enum ocmem_client client,
 		goto err_unlock;
 	}
 
+	if (qcom_scm_restore_sec_cfg_available()) {
+		ret = qcom_scm_restore_sec_cfg(QCOM_SCM_OCMEM_DEV_ID, 0);
+		if (ret) {
+			dev_err(ocmem->dev, "could not restore secure configuration: %d\n", ret);
+			goto err_unlock;
+		}
+	}
+
 	buf->offset = 0;
 	buf->addr = device_address(ocmem, client, buf->offset);
 	buf->len = size;
