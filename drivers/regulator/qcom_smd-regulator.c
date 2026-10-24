@@ -27,6 +27,7 @@ struct qcom_rpm_reg {
 	unsigned int enabled_updated:1;
 	unsigned int uv_updated:1;
 	unsigned int load_updated:1;
+	unsigned int sleep_set:1;
 };
 
 struct rpm_regulator_req {
@@ -72,6 +73,10 @@ static int rpm_reg_write_active(struct qcom_rpm_reg *vreg)
 	ret = qcom_rpm_smd_write(smd_vreg_rpm, QCOM_SMD_RPM_ACTIVE_STATE,
 				 vreg->type, vreg->id,
 				 req, sizeof(req[0]) * reqlen);
+	if (!ret && vreg->sleep_set)
+		ret = qcom_rpm_smd_write(smd_vreg_rpm, QCOM_SMD_RPM_SLEEP_STATE,
+					 vreg->type, vreg->id,
+					 req, sizeof(req[0]) * reqlen);
 	if (!ret) {
 		vreg->enabled_updated = 0;
 		vreg->uv_updated = 0;
@@ -1465,6 +1470,7 @@ static int rpm_regulator_init_vreg(struct qcom_rpm_reg *vreg, struct device *dev
 	vreg->dev	= dev;
 	vreg->type	= rpm_data->type;
 	vreg->id	= rpm_data->id;
+	vreg->sleep_set	= of_property_read_bool(node, "regulator-always-on");
 
 	memcpy(&vreg->desc, rpm_data->desc, sizeof(vreg->desc));
 	vreg->desc.name = rpm_data->name;
