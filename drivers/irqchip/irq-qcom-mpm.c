@@ -83,6 +83,8 @@ struct qcom_mpm_priv {
 	struct mpm_gic_map *maps;
 	unsigned int map_cnt;
 	unsigned int reg_stride;
+	u32 *shadow;
+	int irq;
 	struct irq_domain *domain;
 	struct generic_pm_domain genpd;
 };
@@ -92,6 +94,9 @@ static u32 qcom_mpm_read(struct qcom_mpm_priv *priv, unsigned int reg,
 {
 	unsigned int offset = (reg * priv->reg_stride + index + 2) * 4;
 
+	if (reg != MPM_REG_STATUS)
+		return priv->shadow[reg * priv->reg_stride + index];
+
 	return readl_relaxed(priv->base + offset);
 }
 
@@ -99,6 +104,9 @@ static void qcom_mpm_write(struct qcom_mpm_priv *priv, unsigned int reg,
 			   unsigned int index, u32 val)
 {
 	unsigned int offset = (reg * priv->reg_stride + index + 2) * 4;
+
+	if (reg != MPM_REG_STATUS)
+		priv->shadow[reg * priv->reg_stride + index] = val;
 
 	writel_relaxed(val, priv->base + offset);
 
@@ -296,10 +304,20 @@ static int mpm_pd_power_off(struct generic_pm_domain *genpd)
 {
 	struct qcom_mpm_priv *priv = container_of(genpd, struct qcom_mpm_priv,
 						  genpd);
+	unsigned int reg;
 	int i, ret;
 
-	for (i = 0; i < priv->reg_stride; i++)
+	writel_relaxed(~0, priv->base);
+	writel_relaxed(~0, priv->base + 4);
+
+	for (i = 0; i < priv->reg_stride; i++) {
+		for (reg = MPM_REG_ENABLE; reg < MPM_REG_STATUS; reg++)
+			qcom_mpm_write(priv, reg, i, qcom_mpm_read(priv, reg, i));
+
 		qcom_mpm_write(priv, MPM_REG_STATUS, i, 0);
+	}
+
+	irq_set_affinity(priv->irq, cpumask_of(smp_processor_id()));
 
 	/* Notify RPM to write vMPM into HW */
 	ret = mbox_send_message(priv->mbox_chan, NULL);
@@ -346,6 +364,10 @@ static int qcom_mpm_probe(struct platform_device *pdev, struct device_node *pare
 	}
 
 	priv->reg_stride = DIV_ROUND_UP(pin_cnt, 32);
+
+	priv->shadow = devm_kcalloc(dev, MPM_REG_STATUS * priv->reg_stride, sizeof(u32), GFP_KERNEL);
+	if (!priv->shadow)
+		return -ENOMEM;
 
 	ret = of_property_count_u32_elems(np, "qcom,mpm-pin-map");
 	if (ret < 0) {
@@ -414,6 +436,8 @@ static int qcom_mpm_probe(struct platform_device *pdev, struct device_node *pare
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
+
+	priv->irq = irq;
 
 	genpd = &priv->genpd;
 	genpd->flags = GENPD_FLAG_IRQ_SAFE;
