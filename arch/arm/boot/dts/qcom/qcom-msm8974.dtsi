@@ -103,6 +103,7 @@
 			cache-level = <2>;
 			cache-unified;
 			qcom,saw = <&saw_l2>;
+			power-domains = <&mpm>;
 		};
 
 		idle-states {
