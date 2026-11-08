@@ -68,6 +68,7 @@ struct smd_channel_info_word_pair;
 
 static const struct rpmsg_endpoint_ops qcom_smd_endpoint_ops;
 
+#define SMD_RPM_EDGE_ID		15
 #define SMD_ALLOC_TBL_COUNT	2
 #define SMD_ALLOC_TBL_SIZE	64
 
@@ -1424,8 +1425,8 @@ static int qcom_smd_parse_edge(struct device *dev,
 		goto put_node;
 	}
 
-	ret = devm_request_irq(dev, irq,
-			       qcom_smd_edge_intr, IRQF_TRIGGER_RISING,
+	ret = devm_request_irq(dev, irq, qcom_smd_edge_intr,
+			       IRQF_TRIGGER_RISING | (edge->edge_id == SMD_RPM_EDGE_ID ? IRQF_NO_SUSPEND : 0),
 			       node->name, edge);
 	if (ret) {
 		dev_err(dev, "failed to request smd irq\n");
