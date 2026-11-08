@@ -243,7 +243,8 @@ static void ipi_teardown(int cpu)
 		return;
 
 	for (i = 0; i < nr_ipi; i++)
-		disable_percpu_irq(ipi_irq_base + i);
+		if (i != IPI_WAKEUP)
+			disable_percpu_irq(ipi_irq_base + i);
 }
 
 /*
