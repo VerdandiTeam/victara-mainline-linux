@@ -432,6 +432,8 @@ static size_t qcom_smd_channel_get_rx_avail(struct qcom_smd_channel *channel)
 	head = GET_RX_CHANNEL_INFO(channel, head);
 	tail = GET_RX_CHANNEL_INFO(channel, tail);
 
+	rmb();
+
 	return (head - tail) & (channel->fifo_size - 1);
 }
 
@@ -533,6 +535,8 @@ static void qcom_smd_channel_advance(struct qcom_smd_channel *channel,
 	tail = GET_RX_CHANNEL_INFO(channel, tail);
 	tail += count;
 	tail &= (channel->fifo_size - 1);
+
+	mb();
 	SET_RX_CHANNEL_INFO(channel, tail, tail);
 }
 
@@ -723,6 +727,8 @@ static int qcom_smd_write_fifo(struct qcom_smd_channel *channel,
 
 	head += count;
 	head &= (channel->fifo_size - 1);
+
+	wmb();
 	SET_TX_CHANNEL_INFO(channel, head, head);
 
 	return count;
