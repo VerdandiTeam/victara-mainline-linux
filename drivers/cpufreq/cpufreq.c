@@ -1510,7 +1510,7 @@ static int cpufreq_policy_online(struct cpufreq_policy *policy,
 	 * equal to target-freq.
 	 */
 	if ((cpufreq_driver->flags & CPUFREQ_NEED_INITIAL_FREQ_CHECK)
-	    && has_target()) {
+	    && has_target() && !cpufreq_suspended) {
 		unsigned int old_freq = policy->cur;
 
 		/* Are we running at unknown frequency ? */
