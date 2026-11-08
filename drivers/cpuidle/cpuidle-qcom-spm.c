@@ -19,7 +19,9 @@
 #include <linux/pm_runtime.h>
 #include <linux/cpuidle.h>
 #include <linux/cpu_pm.h>
+#include <linux/suspend.h>
 #include <linux/firmware/qcom/qcom_scm.h>
+#include <linux/of_address.h>
 #include <soc/qcom/spm.h>
 
 #include <asm/cacheflush.h>
@@ -38,6 +40,7 @@ static struct device *l2_pd_dev;
 static DEFINE_RAW_SPINLOCK(l2_lock);
 static unsigned int l2_cpus_down;
 static bool l2_rpm_sleep;
+static void __iomem *l2_handoff_lock;
 
 static int qcom_pm_collapse(unsigned long int flags)
 {
@@ -62,7 +65,7 @@ static unsigned long qcom_l2_enter(bool s2idle)
 
 	raw_spin_lock(&l2_lock);
 
-	if (++l2_cpus_down == num_online_cpus()) {
+	if (++l2_cpus_down == num_present_cpus()) {
 		if (s2idle && l2_pd_dev) {
 			spm_set_low_power_mode(l2_spm, PM_SLEEP_MODE_PC);
 			dev_pm_genpd_suspend(l2_pd_dev);
@@ -72,6 +75,14 @@ static unsigned long qcom_l2_enter(bool s2idle)
 			spm_set_low_power_mode(l2_spm, PM_SLEEP_MODE_SPC);
 			flags = QCOM_SCM_CPU_PWR_DOWN_L2_GDHS;
 		}
+	}
+
+	if (l2_handoff_lock) {
+		u32 tid = 128 + smp_processor_id();
+
+		do {
+			writel(tid, l2_handoff_lock);
+		} while (readl(l2_handoff_lock) != tid);
 	}
 
 	raw_spin_unlock(&l2_lock);
@@ -86,7 +97,7 @@ static void qcom_l2_exit(void)
 
 	raw_spin_lock(&l2_lock);
 
-	if (l2_cpus_down-- == num_online_cpus()) {
+	if (l2_cpus_down-- == num_present_cpus()) {
 		if (l2_rpm_sleep) {
 			dev_pm_genpd_resume(l2_pd_dev);
 			l2_rpm_sleep = false;
@@ -159,6 +170,50 @@ static __cpuidle int spm_enter_s2idle_state(struct cpuidle_device *dev,
 	return ret ? -1 : idx;
 }
 
+static void spm_enter_dead(struct cpuidle_device *dev, int idx)
+{
+	struct cpuidle_qcom_spm_data *data = container_of(cpuidle_get_cpu_driver(dev),
+							  struct cpuidle_qcom_spm_data, cpuidle_driver);
+	int ret;
+
+	spm_set_low_power_mode(data->spm, PM_SLEEP_MODE_SPC);
+
+	ret = cpu_suspend(qcom_l2_enter(false), qcom_pm_collapse);
+
+	qcom_l2_exit();
+
+	spm_set_low_power_mode(data->spm, PM_SLEEP_MODE_STBY);
+
+	pr_info("qcom-spm-cpuidle: cpu%d back from dead state, ret %d\n", smp_processor_id(), ret);
+}
+
+static int qcom_spm_suspend_enter(suspend_state_t state)
+{
+	struct cpuidle_qcom_spm_data *data = container_of(cpuidle_get_cpu_driver(cpuidle_get_device()),
+							  struct cpuidle_qcom_spm_data, cpuidle_driver);
+	unsigned long flags;
+
+	if (cpu_pm_enter())
+		return -EBUSY;
+
+	spm_set_low_power_mode(data->spm, PM_SLEEP_MODE_SPC);
+
+	flags = qcom_l2_enter(true);
+	cpu_suspend(flags, qcom_pm_collapse);
+	qcom_l2_exit();
+
+	spm_set_low_power_mode(data->spm, PM_SLEEP_MODE_STBY);
+
+	cpu_pm_exit();
+
+	return 0;
+}
+
+static const struct platform_suspend_ops qcom_spm_suspend_ops = {
+	.valid = suspend_valid_only_mem,
+	.enter = qcom_spm_suspend_enter,
+};
+
 static struct cpuidle_driver qcom_spm_idle_driver = {
 	.name = "qcom_spm",
 	.owner = THIS_MODULE,
@@ -220,6 +275,8 @@ static int spm_cpuidle_register(struct device *cpuidle_dev, int cpu)
 	if (l2_pd_dev)
 		data->cpuidle_driver.states[1].enter_s2idle = spm_enter_s2idle_state;
 
+	data->cpuidle_driver.states[1].enter_dead = spm_enter_dead;
+
 	return cpuidle_register(&data->cpuidle_driver, NULL);
 }
 
@@ -278,9 +335,18 @@ static int spm_cpuidle_find_l2(struct device *dev)
 		l2_pd_dev = dev;
 	}
 
+	if (!of_parse_phandle_with_fixed_args(l2_node, "qcom,scm-handoff-lock", 1, 0, &args)) {
+		void __iomem *base = of_iomap(args.np, 0);
+
+		of_node_put(args.np);
+		if (base)
+			l2_handoff_lock = base + args.args[0];
+	}
+
 	l2_spm = spm;
 
-	pr_info("qcom-spm-cpuidle: L2 GDHS enabled%s\n", l2_pd_dev ? ", L2 PC + RPM sleep in s2idle" : "");
+	pr_info("qcom-spm-cpuidle: L2 GDHS enabled%s%s\n", l2_pd_dev ? ", L2 PC + RPM sleep in s2idle" : "",
+		l2_handoff_lock ? ", SCM handoff lock" : "");
 
 put_l2:
 	of_node_put(l2_node);
@@ -310,6 +376,9 @@ static int spm_cpuidle_drv_probe(struct platform_device *pdev)
 				"Cannot register for CPU%d: %d\n", cpu, ret);
 		}
 	}
+
+	if (l2_pd_dev)
+		suspend_set_ops(&qcom_spm_suspend_ops);
 
 	return 0;
 }

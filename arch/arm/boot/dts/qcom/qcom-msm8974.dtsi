@@ -104,6 +104,7 @@
 			cache-level = <2>;
 			cache-unified;
 			qcom,saw = <&saw_l2>;
+			qcom,scm-handoff-lock = <&tcsr_mutex 0x380>;
 			power-domains = <&mpm>;
 		};
 

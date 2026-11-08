@@ -7,6 +7,7 @@
  */
 
 #include <linux/init.h>
+#include <linux/cpuidle.h>
 #include <linux/errno.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -47,6 +48,13 @@ extern void secondary_startup_arm(void);
 #ifdef CONFIG_HOTPLUG_CPU
 static void qcom_cpu_die(unsigned int cpu)
 {
+	struct cpuidle_driver *drv = cpuidle_get_cpu_driver(cpuidle_get_device());
+
+	if (drv && drv->states[drv->state_count - 1].enter_dead) {
+		cpuidle_play_dead();
+		return;
+	}
+
 	wfi();
 }
 #endif
