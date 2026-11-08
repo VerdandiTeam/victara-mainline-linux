@@ -160,15 +160,37 @@ static void mdp5_disable_commit(struct msm_kms *kms)
 	pm_runtime_put_sync(&mdp5_kms->pdev->dev);
 }
 
+static void mdp5_set_icc_bw(struct mdp5_kms *mdp5_kms, u32 avg, u32 peak)
+{
+	mdp5_kms->icc_avg = avg;
+	mdp5_kms->icc_peak = peak;
+
+	for (int i = 0; i < ARRAY_SIZE(mdp5_kms->paths); i++)
+		icc_set_bw(mdp5_kms->paths[i], avg, peak);
+}
+
 static void mdp5_prepare_commit(struct msm_kms *kms, struct drm_atomic_commit *state)
 {
 	struct mdp5_kms *mdp5_kms = to_mdp5_kms(to_mdp_kms(kms));
 	struct mdp5_global_state *global_state;
+	struct drm_crtc *crtc;
+	u64 bw = 0;
 
 	global_state = mdp5_get_existing_global_state(mdp5_kms);
 
 	if (mdp5_kms->smp)
 		mdp5_smp_prepare_commit(mdp5_kms->smp, &global_state->smp);
+
+	drm_for_each_crtc(crtc, mdp5_kms->dev)
+		if (crtc->state->active)
+			bw += to_mdp5_crtc_state(crtc->state)->bw;
+
+	mdp5_kms->icc_avg_pending = div_u64(2 * bw, 1000);
+	mdp5_kms->icc_peak_pending = div_u64(6 * bw, 5 * 1000);
+
+	if (mdp5_kms->icc_avg_pending > mdp5_kms->icc_avg || mdp5_kms->icc_peak_pending > mdp5_kms->icc_peak)
+		mdp5_set_icc_bw(mdp5_kms, max(mdp5_kms->icc_avg, mdp5_kms->icc_avg_pending),
+				max(mdp5_kms->icc_peak, mdp5_kms->icc_peak_pending));
 }
 
 static void mdp5_flush_commit(struct msm_kms *kms, unsigned crtc_mask)
@@ -194,6 +216,9 @@ static void mdp5_complete_commit(struct msm_kms *kms, unsigned crtc_mask)
 
 	if (mdp5_kms->smp)
 		mdp5_smp_complete_commit(mdp5_kms->smp, &global_state->smp);
+
+	if (mdp5_kms->icc_avg_pending != mdp5_kms->icc_avg || mdp5_kms->icc_peak_pending != mdp5_kms->icc_peak)
+		mdp5_set_icc_bw(mdp5_kms, mdp5_kms->icc_avg_pending, mdp5_kms->icc_peak_pending);
 }
 
 static void mdp5_destroy(struct mdp5_kms *mdp5_kms);
@@ -260,7 +285,7 @@ static int mdp5_enable(struct mdp5_kms *mdp5_kms)
 	mdp5_kms->enable_count++;
 
 	for (int i = 0; i < ARRAY_SIZE(mdp5_kms->paths); i++)
-		icc_set_bw(mdp5_kms->paths[i], 0, MBps_to_icc(6400));
+		icc_set_bw(mdp5_kms->paths[i], mdp5_kms->icc_avg, mdp5_kms->icc_peak);
 
 	clk_prepare_enable(mdp5_kms->ahb_clk);
 	clk_prepare_enable(mdp5_kms->axi_clk);
@@ -803,15 +828,17 @@ static int mdp5_setup_interconnect(struct mdp5_kms *mdp5_kms, struct platform_de
 		return 0;
 	}
 
-	icc_set_bw(path0, 0, MBps_to_icc(6400));
+	mdp5_kms->icc_peak = MBps_to_icc(6400);
+
+	icc_set_bw(path0, 0, mdp5_kms->icc_peak);
 	mdp5_kms->paths[0] = path0;
 
 	if (!IS_ERR_OR_NULL(path1)) {
-		icc_set_bw(path1, 0, MBps_to_icc(6400));
+		icc_set_bw(path1, 0, mdp5_kms->icc_peak);
 		mdp5_kms->paths[1] = path1;
 	}
 	if (!IS_ERR_OR_NULL(path_rot)) {
-		icc_set_bw(path_rot, 0, MBps_to_icc(6400));
+		icc_set_bw(path_rot, 0, mdp5_kms->icc_peak);
 		mdp5_kms->paths[2] = path_rot;
 	}
 

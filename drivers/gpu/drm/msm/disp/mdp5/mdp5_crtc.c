@@ -13,6 +13,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_flip_work.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_managed.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
@@ -727,12 +728,25 @@ static int mdp5_crtc_atomic_check(struct drm_crtc *crtc,
 
 	DBG("%s: check", crtc->name);
 
+	mdp5_cstate->bw = 0;
+
 	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, crtc_state) {
 		struct mdp5_plane_state *mdp5_pstate =
 				to_mdp5_plane_state(pstate);
+		const struct drm_format_info *format;
+		u32 src_w, src_h;
 
 		if (!pstate->visible)
 			continue;
+
+		format = pstate->fb->format;
+		src_w = pstate->src_w >> 16;
+		src_h = pstate->src_h >> 16;
+
+		for (i = 0; i < format->num_planes; i++)
+			mdp5_cstate->bw += (u64)drm_format_info_plane_width(format, src_w, i) *
+					   drm_format_info_plane_height(format, src_h, i) *
+					   format->cpp[i] * drm_mode_vrefresh(mode);
 
 		pstates[cnt].plane = plane;
 		pstates[cnt].state = to_mdp5_plane_state(pstate);

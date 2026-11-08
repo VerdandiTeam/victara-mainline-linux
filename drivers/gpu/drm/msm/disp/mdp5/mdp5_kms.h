@@ -28,6 +28,11 @@ struct mdp5_kms {
 
 	struct icc_path *paths[3];
 
+	u32 icc_avg;
+	u32 icc_peak;
+	u32 icc_avg_pending;
+	u32 icc_peak_pending;
+
 	unsigned num_hwpipes;
 	struct mdp5_hw_pipe *hwpipes[SSPP_MAX];
 
@@ -130,6 +135,8 @@ struct mdp5_crtc_state {
 	u32 pp_done_irqmask;
 
 	bool cmd_mode;
+
+	u64 bw;
 
 	/* should we not write CTL[n].START register on flush?  If the
 	 * encoder has changed this is set to true, since encoder->enable()
