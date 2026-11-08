@@ -3115,7 +3115,7 @@ int wcn36xx_smd_wlan_host_suspend_ind(struct wcn36xx *wcn)
 	mutex_lock(&wcn->hal_mutex);
 
 	INIT_HAL_MSG(msg_body, WCN36XX_HAL_HOST_SUSPEND_IND);
-	msg_body.configured_mcst_bcst_filter_setting = 0;
+	msg_body.configured_mcst_bcst_filter_setting = 3;
 	msg_body.active_session_count = 1;
 	PREPARE_HAL_BUF(wcn->hal_buf, msg_body);
 
