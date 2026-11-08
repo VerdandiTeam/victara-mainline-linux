@@ -413,9 +413,17 @@ static int clk_smd_rpm_enable_scaling(void)
 	return 0;
 }
 
+static int clk_smd_rpm_is_prepared(struct clk_hw *hw)
+{
+	struct clk_smd_rpm *r = to_clk_smd_rpm(hw);
+
+	return r->enabled;
+}
+
 static const struct clk_ops clk_smd_rpm_ops = {
 	.prepare	= clk_smd_rpm_prepare,
 	.unprepare	= clk_smd_rpm_unprepare,
+	.is_prepared	= clk_smd_rpm_is_prepared,
 	.set_rate	= clk_smd_rpm_set_rate,
 	.determine_rate = clk_determine_rate_noop,
 	.recalc_rate	= clk_smd_rpm_recalc_rate,
@@ -424,6 +432,7 @@ static const struct clk_ops clk_smd_rpm_ops = {
 static const struct clk_ops clk_smd_rpm_branch_ops = {
 	.prepare	= clk_smd_rpm_prepare,
 	.unprepare	= clk_smd_rpm_unprepare,
+	.is_prepared	= clk_smd_rpm_is_prepared,
 	.recalc_rate	= clk_smd_rpm_recalc_rate,
 };
 
@@ -444,7 +453,7 @@ DEFINE_CLK_SMD_RPM_BUS_A(pcnoc, 0, 19200000, CLK_IS_CRITICAL);
 DEFINE_CLK_SMD_RPM_BUS(snoc, 1);
 DEFINE_CLK_SMD_RPM_BUS(sysmmnoc, 2);
 DEFINE_CLK_SMD_RPM_BUS(cnoc, 2);
-DEFINE_CLK_SMD_RPM_BUS(mmssnoc_ahb, 3);
+DEFINE_CLK_SMD_RPM_BUS_A(mmssnoc_ahb, 3, 40000000, CLK_IS_CRITICAL);
 DEFINE_CLK_SMD_RPM_BUS(snoc_periph, 0);
 DEFINE_CLK_SMD_RPM_BUS(cnoc, 1);
 DEFINE_CLK_SMD_RPM_BUS(snoc, 2);
@@ -1339,6 +1348,7 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 	struct clk_smd_rpm **rpm_smd_clks;
 	const struct rpm_smd_clk_desc *desc;
 	struct platform_device *icc_pdev;
+	bool disable_unused;
 
 	rpmcc_smd_rpm = dev_get_drvdata(pdev->dev.parent);
 	if (!rpmcc_smd_rpm) {
@@ -1352,6 +1362,7 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 
 	rpm_smd_clks = desc->clks;
 	num_clks = desc->num_clks;
+	disable_unused = of_property_read_bool(pdev->dev.of_node, "qcom,clk-disable-unused");
 
 	/* delay rpm init, somehow this fixes some problems */
 	usleep_range(200000, 210000);
@@ -1369,6 +1380,8 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 		ret = clk_smd_rpm_handoff(rpm_smd_clks[i]);
 		if (ret)
 			goto err;
+
+		rpm_smd_clks[i]->enabled = disable_unused;
 	}
 
 	for (i = 0; i < desc->num_icc_clks; i++) {

@@ -321,6 +321,10 @@
         };
 };
 
+&rpmcc {
+        qcom,clk-disable-unused;
+};
+
 &rpm_requests {
         regulators-0 {
                 compatible = "qcom,rpm-pm8841-regulators";
