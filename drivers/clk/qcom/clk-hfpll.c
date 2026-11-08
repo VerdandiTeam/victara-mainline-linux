@@ -82,7 +82,7 @@ static void __clk_hfpll_enable(struct clk_hw *hw)
 		 * prevent any sort of stall.
 		 */
 		regmap_read_poll_timeout(regmap, hd->status_reg, val,
-					 !(val & BIT(hd->lock_bit)), 0,
+					 val & BIT(hd->lock_bit), 0,
 					 100 * USEC_PER_MSEC);
 	else
 		udelay(60);
