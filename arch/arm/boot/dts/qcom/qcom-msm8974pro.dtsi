@@ -331,23 +331,23 @@
 &cpu0 {
 	operating-points-v2 = <&cpu_opp_table>;
 	interconnects = <&krait_l2 MASTER_KRAIT_L2 &krait_l2 SLAVE_KRAIT_L2>,
-			<&bimc BIMC_MAS_AMPSS_M0 &bimc BIMC_SLV_EBI_CH0>;
+			<&bimc BIMC_MAS_AMPSS_M0 RPM_ACTIVE_TAG &bimc BIMC_SLV_EBI_CH0 RPM_ACTIVE_TAG>;
 };
 
 &cpu1 {
 	operating-points-v2 = <&cpu_opp_table>;
 	interconnects = <&krait_l2 MASTER_KRAIT_L2 &krait_l2 SLAVE_KRAIT_L2>,
-			<&bimc BIMC_MAS_AMPSS_M0 &bimc BIMC_SLV_EBI_CH0>;
+			<&bimc BIMC_MAS_AMPSS_M0 RPM_ACTIVE_TAG &bimc BIMC_SLV_EBI_CH0 RPM_ACTIVE_TAG>;
 };
 
 &cpu2 {
 	operating-points-v2 = <&cpu_opp_table>;
 	interconnects = <&krait_l2 MASTER_KRAIT_L2 &krait_l2 SLAVE_KRAIT_L2>,
-			<&bimc BIMC_MAS_AMPSS_M0 &bimc BIMC_SLV_EBI_CH0>;
+			<&bimc BIMC_MAS_AMPSS_M0 RPM_ACTIVE_TAG &bimc BIMC_SLV_EBI_CH0 RPM_ACTIVE_TAG>;
 };
 
 &cpu3 {
 	operating-points-v2 = <&cpu_opp_table>;
 	interconnects = <&krait_l2 MASTER_KRAIT_L2 &krait_l2 SLAVE_KRAIT_L2>,
-			<&bimc BIMC_MAS_AMPSS_M0 &bimc BIMC_SLV_EBI_CH0>;
+			<&bimc BIMC_MAS_AMPSS_M0 RPM_ACTIVE_TAG &bimc BIMC_SLV_EBI_CH0 RPM_ACTIVE_TAG>;
 };
