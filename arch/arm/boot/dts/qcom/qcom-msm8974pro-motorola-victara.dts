@@ -10,6 +10,8 @@
 #include <dt-bindings/sound/qcom,q6afe.h>
 #include <dt-bindings/sound/qcom,q6asm.h>
 
+/delete-node/ &mpss_region;
+
 / {
        model = "Motorola X 2014";
        compatible = "motorola,victara", "qcom,msm8974pro", "qcom,msm8974";
@@ -56,6 +58,11 @@
         };
 
         reserved-memory {
+                mpss_region: mpss@7700000 {
+                        reg = <0x07700000 0x5a00000>;
+                        no-map;
+                };
+
                 ramoops@3eae0000 {
                         compatible = "ramoops";
                         reg = <0x3eae0000 0x20000>;
@@ -794,6 +801,14 @@
                         };
                 };
         };
+};
+
+&remoteproc_mss {
+        status = "okay";
+
+        mss-supply = <&pm8841_s3>;
+        mx-supply = <&pm8841_s1>;
+        pll-supply = <&pm8941_l12>;
 };
 
 &saw_l2 {
