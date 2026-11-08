@@ -93,6 +93,7 @@
 		nvmem-cells = <&pvs>;
 
 		opp-300000000 {
+			opp-suspend;
 			opp-hz = /bits/ 64 <300000000>;
 			opp-peak-kBps = <300000 572000>;
 			opp-supported-hw = <0xffff>;
