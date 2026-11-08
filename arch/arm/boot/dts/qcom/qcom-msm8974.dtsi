@@ -1231,7 +1231,7 @@
 			#power-domain-cells = <1>;
 			reg = <0xfc400000 0x4000>;
 
-			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>,
+			clocks = <&xo_board>,
 				 <&sleep_clk>;
 			clock-names = "xo",
 				      "sleep_clk";
