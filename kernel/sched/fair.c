@@ -5860,7 +5860,7 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq)
 	int decayed = 0;
 
 	if (cfs_rq->removed.nr) {
-		unsigned long r;
+		u64 r;
 		u32 divider = get_pelt_divider(&cfs_rq->avg);
 
 		raw_spin_lock(&cfs_rq->removed.lock);
