@@ -66,8 +66,8 @@
                 ramoops@3eae0000 {
                         compatible = "ramoops";
                         reg = <0x3eae0000 0x20000>;
-                        console-size = <0x20000>;
-                        record-size = <0x0>;
+                        console-size = <0x10000>;
+                        record-size = <0x8000>;
                         pmsg-size = <0x0>;
                         mem-type = <1>;
                 };
