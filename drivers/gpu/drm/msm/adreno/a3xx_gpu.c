@@ -32,8 +32,23 @@ static bool a3xx_idle(struct msm_gpu *gpu);
 
 static void a3xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit)
 {
+	struct a3xx_gpu *a3xx_gpu = to_a3xx_gpu(to_adreno_gpu(gpu));
 	struct msm_ringbuffer *ring = submit->ring;
 	unsigned int i;
+
+	if (a3xx_gpu->pwron_fixup_pending) {
+		OUT_PKT3(ring, CP_SET_PROTECTED_MODE, 1);
+		OUT_RING(ring, 0);
+
+		OUT_PKT3(ring, CP_INDIRECT_BUFFER_PFD, 2);
+		OUT_RING(ring, lower_32_bits(a3xx_gpu->pwron_fixup_iova));
+		OUT_RING(ring, a3xx_gpu->pwron_fixup_dwords);
+
+		OUT_PKT3(ring, CP_SET_PROTECTED_MODE, 1);
+		OUT_RING(ring, 1);
+
+		a3xx_gpu->pwron_fixup_pending = false;
+	}
 
 	for (i = 0; i < submit->nr_cmds; i++) {
 		switch (submit->cmd[i].type) {
@@ -360,6 +375,8 @@ static int a3xx_hw_init(struct msm_gpu *gpu)
 	/* clear ME_HALT to start micro engine */
 	gpu_write(gpu, REG_AXXX_CP_ME_CNTL, 0);
 
+	a3xx_gpu->pwron_fixup_pending = true;
+
 	return a3xx_me_init(gpu) ? 0 : -EINVAL;
 }
 
@@ -390,6 +407,8 @@ static void a3xx_destroy(struct msm_gpu *gpu)
 	struct a3xx_gpu *a3xx_gpu = to_a3xx_gpu(adreno_gpu);
 
 	DBG("%s", gpu->name);
+
+	msm_gem_kernel_put(a3xx_gpu->pwron_fixup_bo, gpu->vm);
 
 	adreno_gpu_cleanup(adreno_gpu);
 
@@ -562,6 +581,454 @@ static u32 a3xx_get_rptr(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 	return ring->memptrs->rptr;
 }
 
+static const u32 a3xx_pwron_fixup_fs_instructions[] = {
+	0x00000000, 0x302cc300, 0x00000000, 0x302cc304, 0x00000000, 0x302cc308, 0x00000000, 0x302cc30c,
+	0x00000000, 0x302cc310, 0x00000000, 0x302cc314, 0x00000000, 0x302cc318, 0x00000000, 0x302cc31c,
+	0x00000000, 0x302cc320, 0x00000000, 0x302cc324, 0x00000000, 0x302cc328, 0x00000000, 0x302cc32c,
+	0x00000000, 0x302cc330, 0x00000000, 0x302cc334, 0x00000000, 0x302cc338, 0x00000000, 0x302cc33c,
+	0x00000000, 0x00000400, 0x00020000, 0x63808003, 0x00060004, 0x63828007, 0x000a0008, 0x6384800b,
+	0x000e000c, 0x6386800f, 0x00120010, 0x63888013, 0x00160014, 0x638a8017, 0x001a0018, 0x638c801b,
+	0x001e001c, 0x638e801f, 0x00220020, 0x63908023, 0x00260024, 0x63928027, 0x002a0028, 0x6394802b,
+	0x002e002c, 0x6396802f, 0x00320030, 0x63988033, 0x00360034, 0x639a8037, 0x003a0038, 0x639c803b,
+	0x003e003c, 0x639e803f, 0x00000000, 0x00000400, 0x00000003, 0x80d60003, 0x00000007, 0x80d60007,
+	0x0000000b, 0x80d6000b, 0x0000000f, 0x80d6000f, 0x00000013, 0x80d60013, 0x00000017, 0x80d60017,
+	0x0000001b, 0x80d6001b, 0x0000001f, 0x80d6001f, 0x00000023, 0x80d60023, 0x00000027, 0x80d60027,
+	0x0000002b, 0x80d6002b, 0x0000002f, 0x80d6002f, 0x00000033, 0x80d60033, 0x00000037, 0x80d60037,
+	0x0000003b, 0x80d6003b, 0x0000003f, 0x80d6003f, 0x00000000, 0x03000000, 0x00000000, 0x00000000,
+};
+
+static int a3xx_pwron_fixup_init(struct msm_gpu *gpu)
+{
+	struct a3xx_gpu *a3xx_gpu = to_a3xx_gpu(to_adreno_gpu(gpu));
+	u32 *start, *cmds;
+
+	start = msm_gem_kernel_new(gpu->dev, SZ_4K, MSM_BO_WC | MSM_BO_GPU_READONLY, gpu->vm,
+				   &a3xx_gpu->pwron_fixup_bo, &a3xx_gpu->pwron_fixup_iova);
+	if (IS_ERR(start))
+		return PTR_ERR(start);
+
+	msm_gem_object_set_name(a3xx_gpu->pwron_fixup_bo, "pwron_fixup");
+
+	cmds = start;
+
+	*cmds++ = CP_TYPE0_PKT | (1 << 16) | REG_A3XX_UCHE_CACHE_INVALIDATE0_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = 0x90000000;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (2 << 16) | (CP_REG_RMW << 8);
+	*cmds++ = REG_A3XX_RBBM_CLOCK_CTL;
+	*cmds++ = 0xfffcffff;
+	*cmds++ = 0x00010000;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONTROL_0_REG;
+	*cmds++ = 0x1e000150;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (1 << 16) | (CP_SET_CONSTANT << 8);
+	*cmds++ = (0x4 << 16) | (REG_A3XX_HLSQ_CONTROL_0_REG - 0x2000);
+	*cmds++ = 0x1e000150;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONTROL_0_REG;
+	*cmds++ = 0x1e000150;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONTROL_1_REG;
+	*cmds++ = 0x00000040;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONTROL_2_REG;
+	*cmds++ = 0x80000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONTROL_3_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_VS_CONTROL_REG;
+	*cmds++ = 0x00000001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_FS_CONTROL_REG;
+	*cmds++ = 0x0d001002;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONST_VSPRESV_RANGE_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONST_FSPRESV_RANGE_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_NDRANGE_0_REG;
+	*cmds++ = 0x00401101;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_GLOBAL_WORK_SIZE(0);
+	*cmds++ = 0x00000400;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_GLOBAL_WORK_OFFSET(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_GLOBAL_WORK_SIZE(1);
+	*cmds++ = 0x00000001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_GLOBAL_WORK_OFFSET(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_GLOBAL_WORK_SIZE(2);
+	*cmds++ = 0x00000001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_GLOBAL_WORK_OFFSET(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_CONTROL_0_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_CONTROL_1_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_KERNEL_CONST_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_KERNEL_GROUP_RATIO(0);
+	*cmds++ = 0x00000010;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_KERNEL_GROUP_Y_REG;
+	*cmds++ = 0x00000001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_KERNEL_GROUP_Z_REG;
+	*cmds++ = 0x00000001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_WG_OFFSET_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_SP_CTRL_REG;
+	*cmds++ = 0x00040000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_CTRL_REG0;
+	*cmds++ = 0x0000000a;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_CTRL_REG1;
+	*cmds++ = 0x00000001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_PARAM_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(4);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(5);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(6);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OUT_REG(7);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_VPC_DST_REG(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_VPC_DST_REG(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_VPC_DST_REG(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_VPC_DST_REG(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OBJ_OFFSET_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_OBJ_START_REG;
+	*cmds++ = 0x00000004;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_PVT_MEM_PARAM_REG;
+	*cmds++ = 0x04008001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_PVT_MEM_ADDR_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_PVT_MEM_SIZE_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_VS_LENGTH_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_CTRL_REG0;
+	*cmds++ = 0x0db0400a;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_CTRL_REG1;
+	*cmds++ = 0x00300402;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_OBJ_OFFSET_REG;
+	*cmds++ = 0x00010000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_OBJ_START_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_PVT_MEM_PARAM_REG;
+	*cmds++ = 0x04008001;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_PVT_MEM_ADDR_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_PVT_MEM_SIZE_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_FLAT_SHAD_MODE_REG_0;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_FLAT_SHAD_MODE_REG_1;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_OUTPUT_REG;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_MRT_REG(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_MRT_REG(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_MRT_REG(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_MRT_REG(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_IMAGE_OUTPUT_REG(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_IMAGE_OUTPUT_REG(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_IMAGE_OUTPUT_REG(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_IMAGE_OUTPUT_REG(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_SP_FS_LENGTH_REG;
+	*cmds++ = 0x0000000d;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_CLIP_CNTL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_GB_CLIP_ADJ;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_VPORT_XOFFSET;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_VPORT_XSCALE;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_VPORT_YOFFSET;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_VPORT_YSCALE;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_VPORT_ZOFFSET;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_VPORT_ZSCALE;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_X(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Y(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Z(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_W(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_X(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Y(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Z(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_W(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_X(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Y(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Z(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_W(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_X(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Y(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Z(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_W(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_X(4);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Y(4);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Z(4);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_W(4);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_X(5);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Y(5);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_Z(5);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_CL_USER_PLANE_W(5);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SU_POINT_MINMAX;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SU_POINT_SIZE;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SU_POLY_OFFSET_OFFSET;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SU_POLY_OFFSET_SCALE;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SU_MODE_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SC_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SC_SCREEN_SCISSOR_TL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SC_SCREEN_SCISSOR_BR;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SC_WINDOW_SCISSOR_BR;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_SC_WINDOW_SCISSOR_TL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_TSE_DEBUG_ECO;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_PERFCOUNTER0_SELECT;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_PERFCOUNTER1_SELECT;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_PERFCOUNTER2_SELECT;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_GRAS_PERFCOUNTER3_SELECT;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MODE_CONTROL;
+	*cmds++ = 0x00008000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_RENDER_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MSAA_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_ALPHA_REF;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_CONTROL(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_CONTROL(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_CONTROL(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_CONTROL(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_INFO(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_INFO(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_INFO(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_INFO(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_BASE(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_BASE(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_BASE(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BUF_BASE(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BLEND_CONTROL(0);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BLEND_CONTROL(1);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BLEND_CONTROL(2);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_MRT_BLEND_CONTROL(3);
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_BLEND_RED;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_BLEND_GREEN;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_BLEND_BLUE;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_BLEND_ALPHA;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_CLEAR_COLOR_DW0;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_CLEAR_COLOR_DW1;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_CLEAR_COLOR_DW2;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_CLEAR_COLOR_DW3;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_COPY_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_COPY_DEST_BASE;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_COPY_DEST_PITCH;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_COPY_DEST_INFO;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_DEPTH_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_DEPTH_CLEAR;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_DEPTH_INFO;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_DEPTH_PITCH;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_STENCIL_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_STENCIL_CLEAR;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_STENCIL_INFO;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_STENCIL_PITCH;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_STENCILREFMASK;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_STENCILREFMASK_BF;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_LRZ_VSC_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_WINDOW_OFFSET;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_SAMPLE_COUNT_CONTROL;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_SAMPLE_COUNT_ADDR;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_Z_CLAMP_MIN;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_Z_CLAMP_MAX;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_GMEM_BASE_ADDR;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_DEBUG_ECO_CONTROLS_ADDR;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_PERFCOUNTER0_SELECT;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_PERFCOUNTER1_SELECT;
+	*cmds++ = 0x00000000;
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_RB_FRAME_BUFFER_DIMENSION;
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (3 << 16) | (CP_LOAD_STATE << 8);
+	*cmds++ = CP_LOAD_STATE_0_DST_OFF(1) | CP_LOAD_STATE_0_STATE_BLOCK(SB_FRAG_SHADER) | CP_LOAD_STATE_0_NUM_UNIT(1);
+	*cmds++ = CP_LOAD_STATE_1_STATE_TYPE(ST_CONSTANTS);
+	*cmds++ = 0x00400000;
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (3 << 16) | (CP_LOAD_STATE << 8);
+	*cmds++ = CP_LOAD_STATE_0_DST_OFF(2) | CP_LOAD_STATE_0_STATE_BLOCK(SB_FRAG_SHADER) | CP_LOAD_STATE_0_NUM_UNIT(1);
+	*cmds++ = CP_LOAD_STATE_1_STATE_TYPE(ST_CONSTANTS);
+	*cmds++ = 0x00400220;
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (3 << 16) | (CP_LOAD_STATE << 8);
+	*cmds++ = CP_LOAD_STATE_0_STATE_BLOCK(SB_FRAG_SHADER) | CP_LOAD_STATE_0_NUM_UNIT(1);
+	*cmds++ = CP_LOAD_STATE_1_STATE_TYPE(ST_CONSTANTS);
+	*cmds++ = 0x00000000;
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | ((ARRAY_SIZE(a3xx_pwron_fixup_fs_instructions) + 1) << 16) | (CP_LOAD_STATE << 8);
+	*cmds++ = CP_LOAD_STATE_0_STATE_BLOCK(SB_FRAG_SHADER) | CP_LOAD_STATE_0_NUM_UNIT(13);
+	*cmds++ = 0x00000000;
+
+	memcpy(cmds, a3xx_pwron_fixup_fs_instructions, sizeof(a3xx_pwron_fixup_fs_instructions));
+	cmds += ARRAY_SIZE(a3xx_pwron_fixup_fs_instructions);
+
+	*cmds++ = CP_TYPE3_PKT | (CP_RUN_OPENCL << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CL_CONTROL_0_REG;
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE0_PKT | REG_A3XX_HLSQ_CONTROL_0_REG;
+	*cmds++ = 0x1e000150;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (1 << 16) | (CP_SET_CONSTANT << 8);
+	*cmds++ = (0x4 << 16) | (REG_A3XX_HLSQ_CONTROL_0_REG - 0x2000);
+	*cmds++ = 0x1e000050;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (2 << 16) | (CP_REG_RMW << 8);
+	*cmds++ = REG_A3XX_RBBM_CLOCK_CTL;
+	*cmds++ = 0xfffcffff;
+	*cmds++ = 0x00000000;
+
+	*cmds++ = CP_TYPE3_PKT | (CP_WAIT_FOR_IDLE << 8);
+	*cmds++ = 0x00000000;
+
+	a3xx_gpu->pwron_fixup_dwords = cmds - start;
+
+	return 0;
+}
+
 static struct msm_gpu *a3xx_gpu_init(struct drm_device *dev)
 {
 	struct a3xx_gpu *a3xx_gpu = NULL;
@@ -592,6 +1059,10 @@ static struct msm_gpu *a3xx_gpu_init(struct drm_device *dev)
 	adreno_gpu->registers = a3xx_registers;
 
 	ret = adreno_gpu_init(dev, pdev, adreno_gpu, config->info->funcs, 1);
+	if (ret)
+		goto fail;
+
+	ret = a3xx_pwron_fixup_init(gpu);
 	if (ret)
 		goto fail;
 

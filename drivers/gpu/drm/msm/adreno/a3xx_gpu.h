@@ -23,6 +23,11 @@ struct a3xx_gpu {
 
 	struct icc_path *icc_path;
 	struct icc_path *ocmem_icc_path;
+
+	struct drm_gem_object *pwron_fixup_bo;
+	uint64_t pwron_fixup_iova;
+	uint32_t pwron_fixup_dwords;
+	bool pwron_fixup_pending;
 };
 #define to_a3xx_gpu(x) container_of(x, struct a3xx_gpu, base)
 
