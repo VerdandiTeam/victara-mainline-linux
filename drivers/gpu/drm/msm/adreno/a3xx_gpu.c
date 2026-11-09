@@ -120,6 +120,10 @@ static int a3xx_hw_init(struct msm_gpu *gpu)
 
 	DBG("%s", gpu->name);
 
+	gpu_write(gpu, REG_A3XX_RBBM_SW_RESET_CMD, 1);
+	gpu_read(gpu, REG_A3XX_RBBM_SW_RESET_CMD);
+	gpu_write(gpu, REG_A3XX_RBBM_SW_RESET_CMD, 0);
+
 	if (adreno_is_a305(adreno_gpu)) {
 		/* Set up 16 deep read/write request queues: */
 		gpu_write(gpu, REG_A3XX_VBIF_IN_RD_LIM_CONF0, 0x10101010);
