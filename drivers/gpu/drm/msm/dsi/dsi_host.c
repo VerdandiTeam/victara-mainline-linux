@@ -8,7 +8,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/interrupt.h>
-#include <linux/iopoll.h>
 #include <linux/mfd/syscon.h>
 #include <linux/of.h>
 #include <linux/of_graph.h>
@@ -143,6 +142,8 @@ struct msm_dsi_host {
 
 	struct completion dma_comp;
 	struct completion video_comp;
+	struct completion mdp_comp;
+	bool mdp_busy;
 	struct mutex dev_mutex;
 	struct mutex cmd_mutex;
 	spinlock_t intr_lock; /* Protect interrupt ctrl register */
@@ -1216,6 +1217,28 @@ static void dsi_wait4video_done(struct msm_dsi_host *msm_host)
 	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_VIDEO_DONE, 0);
 }
 
+static void dsi_wait4cmd_mdp_done(struct msm_dsi_host *msm_host)
+{
+	struct device *dev = &msm_host->pdev->dev;
+	unsigned long flags;
+	bool busy;
+
+	spin_lock_irqsave(&msm_host->intr_lock, flags);
+	busy = msm_host->mdp_busy;
+	spin_unlock_irqrestore(&msm_host->intr_lock, flags);
+
+	if (!busy)
+		return;
+
+	if (!wait_for_completion_timeout(&msm_host->mdp_comp, msecs_to_jiffies(70))) {
+		DRM_DEV_ERROR(dev, "wait for cmd mdp done timed out\n");
+
+		spin_lock_irqsave(&msm_host->intr_lock, flags);
+		msm_host->mdp_busy = false;
+		spin_unlock_irqrestore(&msm_host->intr_lock, flags);
+	}
+}
+
 static void dsi_wait4video_eng_busy(struct msm_dsi_host *msm_host)
 {
 	u32 data;
@@ -1707,6 +1730,13 @@ static irqreturn_t dsi_host_irq(int irq, void *ptr)
 	if (isr & DSI_IRQ_CMD_DMA_DONE)
 		complete(&msm_host->dma_comp);
 
+	if (isr & DSI_IRQ_CMD_MDP_DONE) {
+		spin_lock_irqsave(&msm_host->intr_lock, flags);
+		msm_host->mdp_busy = false;
+		complete(&msm_host->mdp_comp);
+		spin_unlock_irqrestore(&msm_host->intr_lock, flags);
+	}
+
 	return IRQ_HANDLED;
 }
 
@@ -1782,10 +1812,30 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
 		return -EINVAL;
 
 	mutex_lock(&msm_host->cmd_mutex);
+	dsi_wait4cmd_mdp_done(msm_host);
 	ret = msm_dsi_manager_cmd_xfer(msm_host->id, msg);
 	mutex_unlock(&msm_host->cmd_mutex);
 
 	return ret;
+}
+
+void msm_dsi_cmd_mdp_start(struct msm_dsi *msm_dsi)
+{
+	struct msm_dsi_host *msm_host = to_msm_dsi_host(msm_dsi->host);
+	unsigned long flags;
+
+	mutex_lock(&msm_host->cmd_mutex);
+
+	dsi_wait4cmd_mdp_done(msm_host);
+
+	if (msm_host->power_on && msm_host->enabled) {
+		spin_lock_irqsave(&msm_host->intr_lock, flags);
+		reinit_completion(&msm_host->mdp_comp);
+		msm_host->mdp_busy = true;
+		spin_unlock_irqrestore(&msm_host->intr_lock, flags);
+	}
+
+	mutex_unlock(&msm_host->cmd_mutex);
 }
 
 static const struct mipi_dsi_host_ops dsi_host_ops = {
@@ -2081,6 +2131,7 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 
 	init_completion(&msm_host->dma_comp);
 	init_completion(&msm_host->video_comp);
+	init_completion(&msm_host->mdp_comp);
 	mutex_init(&msm_host->dev_mutex);
 	mutex_init(&msm_host->cmd_mutex);
 	spin_lock_init(&msm_host->intr_lock);
@@ -2169,12 +2220,6 @@ int msm_dsi_host_xfer_prepare(struct mipi_dsi_host *host,
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 	const struct msm_dsi_cfg_handler *cfg_hnd = msm_host->cfg_hnd;
 
-	/* TODO: make sure dsi_cmd_mdp is idle.
-	 * Since DSI6G v1.2.0, we can set DSI_TRIG_CTRL.BLOCK_DMA_WITHIN_FRAME
-	 * to ask H/W to wait until cmd mdp is idle. S/W wait is not needed.
-	 * How to handle the old versions? Wait for mdp cmd done?
-	 */
-
 	/*
 	 * mdss interrupt is generated in mdp core clock domain
 	 * mdp clock need to be enabled to receive dsi interrupt
@@ -2182,17 +2227,6 @@ int msm_dsi_host_xfer_prepare(struct mipi_dsi_host *host,
 	pm_runtime_get_sync(&msm_host->pdev->dev);
 	cfg_hnd->ops->link_clk_set_rate(msm_host);
 	cfg_hnd->ops->link_clk_enable(msm_host);
-
-	if (!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO) &&
-	    cfg_hnd->major == MSM_DSI_VER_MAJOR_6G &&
-	    cfg_hnd->minor < MSM_DSI_6G_VER_MINOR_V1_2 &&
-	    msm_host->power_on && msm_host->enabled) {
-		u32 status;
-
-		if (readl_poll_timeout(msm_host->ctrl_base + REG_DSI_STATUS0, status,
-				       !(status & DSI_STATUS0_CMD_MODE_MDP_BUSY), 100, 20000))
-			pr_warn_ratelimited("%s: cmd mode mdp still busy\n", __func__);
-	}
 
 	/* TODO: vote for bus bandwidth */
 
@@ -2564,6 +2598,7 @@ int msm_dsi_host_power_off(struct mipi_dsi_host *host)
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 	const struct msm_dsi_cfg_handler *cfg_hnd = msm_host->cfg_hnd;
+	unsigned long flags;
 
 	mutex_lock(&msm_host->dev_mutex);
 	if (!msm_host->power_on) {
@@ -2572,6 +2607,11 @@ int msm_dsi_host_power_off(struct mipi_dsi_host *host)
 	}
 
 	dsi_ctrl_disable(msm_host);
+
+	spin_lock_irqsave(&msm_host->intr_lock, flags);
+	msm_host->mdp_busy = false;
+	complete_all(&msm_host->mdp_comp);
+	spin_unlock_irqrestore(&msm_host->intr_lock, flags);
 
 	pinctrl_pm_select_sleep_state(&msm_host->pdev->dev);
 

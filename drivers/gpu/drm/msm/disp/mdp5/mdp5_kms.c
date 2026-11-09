@@ -392,9 +392,11 @@ static int modeset_init_intf(struct mdp5_kms *mdp5_kms,
 		}
 
 		ret = msm_dsi_modeset_init(priv->kms->dsi[dsi_id], dev, encoder);
-		if (!ret)
+		if (!ret) {
+			intf->dsi = priv->kms->dsi[dsi_id];
 			mdp5_encoder_set_intf_mode(encoder,
 						   msm_dsi_is_cmd_mode(priv->kms->dsi[dsi_id]));
+		}
 
 		break;
 	}

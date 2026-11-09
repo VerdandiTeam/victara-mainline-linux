@@ -166,6 +166,7 @@ struct mdp5_interface {
 	int num; /* display interface number */
 	enum mdp5_intf_type type;
 	enum mdp5_intf_mode mode;
+	struct msm_dsi *dsi;
 };
 
 struct mdp5_encoder {

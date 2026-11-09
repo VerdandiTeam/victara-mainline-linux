@@ -225,6 +225,9 @@ int mdp5_ctl_set_encoder_state(struct mdp5_ctl *ctl,
 	DBG("intf_%d: %s", intf->num, str_on_off(enabled));
 
 	if (start_signal_needed(ctl, pipeline)) {
+		if (intf->dsi)
+			msm_dsi_cmd_mdp_start(intf->dsi);
+
 		send_start_signal(ctl);
 	}
 
@@ -533,6 +536,9 @@ u32 mdp5_ctl_commit(struct mdp5_ctl *ctl,
 	}
 
 	if (start_signal_needed(ctl, pipeline)) {
+		if (pipeline->intf->dsi)
+			msm_dsi_cmd_mdp_start(pipeline->intf->dsi);
+
 		send_start_signal(ctl);
 	}
 
