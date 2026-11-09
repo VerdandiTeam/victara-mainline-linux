@@ -718,8 +718,13 @@ void adreno_recover(struct msm_gpu *gpu)
 	int ret;
 
 	msm_perfcntr_suspend(gpu);
-	gpu->funcs->pm_suspend(gpu);
-	gpu->funcs->pm_resume(gpu);
+
+	ret = gpu->funcs->pm_suspend(gpu);
+	if (ret)
+		DRM_DEV_ERROR(dev->dev, "gpu power cycle failed: %d\n", ret);
+	else
+		gpu->funcs->pm_resume(gpu);
+
 	msm_perfcntr_resume(gpu);
 
 	ret = msm_gpu_hw_init(gpu);
