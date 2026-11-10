@@ -74,7 +74,7 @@ config DRM_MSM_KMS
 config DRM_MSM_KMS_FBDEV
 	def_bool DRM_FBDEV_EMULATION
 	depends on DRM_MSM_KMS
-	select FB_SYSMEM_HELPERS
+	select FB_SYSMEM_HELPERS_DEFERRED
 
 config DRM_MSM_MDSS
 	bool
