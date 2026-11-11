@@ -2398,6 +2398,7 @@ static struct gdsc oxili_gdsc = {
 	.cxc_count = 1,
 	.pd = {
 		.name = "oxili",
+		.flags = GENPD_FLAG_NO_STAY_ON,
 	},
 	.pwrsts = PWRSTS_OFF_ON,
 };
@@ -2406,6 +2407,7 @@ static struct gdsc oxilicx_gdsc = {
 	.gdscr = 0x4034,
 	.pd = {
 		.name = "oxilicx",
+		.flags = GENPD_FLAG_NO_STAY_ON,
 	},
 	.parent = &oxili_gdsc.pd,
 	.pwrsts = PWRSTS_OFF_ON,
